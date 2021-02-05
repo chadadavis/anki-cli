@@ -32,6 +32,8 @@ deck='nl'
 term=len(sys.argv) > 1 and sys.argv[1]
 term=term or input("Gimme: ")
 wild=f'*{term}*'
+# TODO maybe the findNotes / notesInfo API is simpler ?
+# https://github.com/FooSoft/anki-connect/blob/master/actions/notes.md
 result = invoke('findCards', query=f'deck:{deck} front:{term}')
 if not result:
     print("No exact match")
@@ -49,3 +51,24 @@ for card_id in result:
 
 # Start from ... <div class="slider-wrap" style="padding:10px">
 # But not including © (not always present)
+
+# Call addNote (and check for dupes again?)
+# https://github.com/FooSoft/anki-connect/blob/master/actions/notes.md
+
+definition = "Whatever we extracted above"
+# Duplicate check (deck scope) enabled by default
+note = {
+    'deckName': 'nl',
+    'modelName': 'Basic-nl',
+    'fields': { 'Front': term, 'Back': definition },
+    }
+card_id = invoke('addNote', note=note)
+
+# TODO make a separate def for displaying a card
+print(card_id)
+cardsInfo = invoke('cardsInfo', cards=[card_id])
+card = cardsInfo[0]
+f = card['fields']['Front']['value']
+b = card['fields']['Back']['value']
+print(f)
+print(b)

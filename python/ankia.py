@@ -44,14 +44,14 @@ def invoke(action, **params):
 
 deck='nl'
 term=len(sys.argv) > 1 and ' '.join(sys.argv[1:])
-print(f"term='{term}'")
+# print(f"term='{term}'")
 term=term or input("Find or create term: ")
 # TODO for searching, can't have a ' ' char, for some reason,
 # but we also don't want to the newly created 'front' field to have '_' in it
 # So make a separate search_term with '_' in it, and maybe also canonicalize whitespace here
-wild=f'*{term}*'
+search_term = re.sub(r' ', '_', term)
+wild=f'*{search_term}*'
 field='front'
-# field='back'
 result = invoke('findCards', query=f'deck:{deck} {field}:{term}')
 if not result:
     print("No matches. Searching for wildcard matches:")
@@ -72,15 +72,18 @@ for card_id in result:
     b = card['fields']['Back']['value']
     # TODO render HTML another way? eg as Markdown instead?
     b = re.sub(r'&nbsp;', ' ', b)
-    # Replace opening tags with a newline
+    # Remove tags that are usually in the phonetic markup
+    b = re.sub(r'\<\/?a.*?\>', '', b)
+    # Replace opening tags with a newline, since usually a new section
     b = re.sub(r'\<[^/].*?\>', '\n', b)
     # Remove remaining tags
     b = re.sub(r'\<.*?\>', '', b)
     # Max 2x newlines in a row
     b = re.sub(r'\n{3,}', '\n\n', b)
-    YELLOW="\033[1;33m"
+    LTYELLOW ="\033[1;33m"
+    LTRED    ="\033[1;31m"
     NOSTYLE="\033[0;0m"
-    b = re.sub(term, f"{YELLOW}{term}{NOSTYLE}", b)
+    b = re.sub(term, f"{LTRED}{term}{NOSTYLE}", b)
     # TODO highlight 'term' in output (console colors)
     print(b)
 

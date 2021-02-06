@@ -43,19 +43,32 @@ def invoke(action, **params):
     return response['result']
 
 deck='nl'
-term=len(sys.argv) > 1 and sys.argv[1]
+term=len(sys.argv) > 1 and ' '.join(sys.argv[1:])
+print(f"term='{term}'")
 term=term or input("Find or create term: ")
+# TODO for searching, can't have a ' ' char, for some reason,
+# but we also don't want to the newly created 'front' field to have '_' in it
+# So make a separate search_term with '_' in it, and maybe also canonicalize whitespace here
 wild=f'*{term}*'
-result = invoke('findCards', query=f'deck:{deck} front:{term}')
+field='front'
+# field='back'
+result = invoke('findCards', query=f'deck:{deck} {field}:{term}')
 if not result:
-    print("No exact match. Wildcard matches:")
-    result = invoke('findCards', query=f'deck:{deck} front:{wild}')
+    print("No matches. Searching for wildcard matches:")
+    result = invoke('findCards', query=f'deck:{deck} {field}:{wild}')
+
+if not result:
+    print("No matches. Searching in definitions:")
+    field='back'
+    result = invoke('findCards', query=f'deck:{deck} {field}:{wild}')
 
 for card_id in result:
     cardsInfo = invoke('cardsInfo', cards=[card_id])
     card = cardsInfo[0]
+    print('=' * 80)
     f = card['fields']['Front']['value']
-    # print(f)
+    print(f)
+    # TODO warn when f contains HTML, and prompt to open in browser, to clean it?
     b = card['fields']['Back']['value']
     # TODO render HTML another way? eg as Markdown instead?
     b = re.sub(r'&nbsp;', ' ', b)
@@ -65,11 +78,17 @@ for card_id in result:
     b = re.sub(r'\<.*?\>', '', b)
     # Max 2x newlines in a row
     b = re.sub(r'\n{3,}', '\n\n', b)
+    YELLOW="\033[1;33m"
+    NOSTYLE="\033[0;0m"
+    b = re.sub(term, f"{YELLOW}{term}{NOSTYLE}", b)
+    # TODO highlight 'term' in output (console colors)
     print(b)
 
+exit("Not fetching right now")
+
 if not result:
-    url = 'http://www.woorden.org/woord/' + term
     print(f"No matches. Fetching: {url}")
+    url = 'http://www.woorden.org/woord/' + term
     # This does an exact match for {term}
     content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
     # print(content)
@@ -93,6 +112,8 @@ if not result:
 
     # TODO make a separate def for displaying a card, rendered
     print(card_id)
+    # TODO make a CLI option to delete (or edit?) a card by ID, for debugging
+    # That could just be part of the REPL after rendering a (set of?) card
     cardsInfo = invoke('cardsInfo', cards=[card_id])
     card = cardsInfo[0]
     f = card['fields']['Front']['value']

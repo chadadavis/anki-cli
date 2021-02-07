@@ -1,15 +1,9 @@
 #!/usr/bin/env python
-import re
 import sys
-import json
 import urllib.request
+import json
 import re
-
-from pprint import pprint
-def pvars(_extra:dict=None):
-    """Also pass pp(vars()) from inside a def"""
-    _vars = { **globals(), **locals(), **(_extra if _extra else {}) }
-    pprint([ [k,_vars[k]] for k in _vars if re.match(r'[a-z]', k)])
+from optparse import OptionParser
 
 # https://foosoft.net/projects/anki-connect/
 
@@ -36,11 +30,24 @@ def request(action, **params):
     return {'action': action, 'params': params, 'version': 6}
 
 def invoke(action, **params):
-    requestJson = json.dumps(request(action, **params)).encode('utf-8')
-    response = json.load(urllib.request.urlopen(urllib.request.Request('http://localhost:8765', requestJson)))
+    requestJson=json.dumps(request(action, **params)).encode('utf-8')
+    response=json.load(urllib.request.urlopen(
+        urllib.request.Request('http://localhost:8765', requestJson)))
     if response['error'] is not None:
         raise Exception(response['error'])
     return response['result']
+
+parser = OptionParser()
+parser.add_option(
+    "-y", "--sync", dest="sync", action="store_true", help="Sync DB to Anki Web and exit",
+    )
+# TODO option for only exact match, or to disable searching wildcard or back, etc
+
+(opts, args)=parser.parse_args()
+if opts.sync:
+    invoke('sync')
+    exit()
+
 
 deck='nl'
 term=len(sys.argv) > 1 and ' '.join(sys.argv[1:])
@@ -49,81 +56,80 @@ term=term or input("Find or create term: ")
 # TODO for searching, can't have a ' ' char, for some reason,
 # but we also don't want to the newly created 'front' field to have '_' in it
 # So make a separate search_term with '_' in it, and maybe also canonicalize whitespace here
-search_term = re.sub(r' ', '_', term)
+search_term=re.sub(r' ', '_', term)
 wild=f'*{search_term}*'
 field='front'
-result = invoke('findCards', query=f'deck:{deck} {field}:{term}')
-if not result:
-    print("No matches. Searching for wildcard matches:")
-    result = invoke('findCards', query=f'deck:{deck} {field}:{wild}')
+result_exact=invoke('findCards', query = f'deck:{deck} {field}:{term}')
+# Keep track of whether this card already exists
+results=result_exact
 
-if not result:
+# TODO CLI option to also search wildcard, even if exact match
+if not results:
+    print("No matches. Searching for wildcard matches:")
+    result=invoke('findCards', query = f'deck:{deck} {field}:{wild}')
+
+# TODO CLI option to also search definitions, even if prev match
+if not results:
     print("No matches. Searching in definitions:")
     field='back'
-    result = invoke('findCards', query=f'deck:{deck} {field}:{wild}')
+    results=invoke('findCards', query = f'deck:{deck} {field}:{wild}')
 
-for card_id in result:
-    cardsInfo = invoke('cardsInfo', cards=[card_id])
-    card = cardsInfo[0]
+# TODO wrap this for loop in a while/REPL
+# TODO make a CLI option to delete (or edit?) a card by ID, for debugging
+# That could just be part of the REPL after rendering a (set of?) card
+for card_id in results:
+    cardsInfo=invoke('cardsInfo', cards = [card_id])
+    card=cardsInfo[0]
     print('=' * 80)
-    f = card['fields']['Front']['value']
+    f=card['fields']['Front']['value']
     print(f)
     # TODO warn when f contains HTML, and prompt to open in browser, to clean it?
-    b = card['fields']['Back']['value']
+    # But I can't see it in the GUI, since WYSIWYG
+    # Auto replace, and use the updateNoteFields API? (after prompting)
+    # https://github.com/FooSoft/anki-connect/blob/master/actions/notes.md
+    b=card['fields']['Back']['value']
     # TODO render HTML another way? eg as Markdown instead?
-    b = re.sub(r'&nbsp;', ' ', b)
+    b=re.sub(r'&nbsp;', ' ', b)
     # Remove tags that are usually in the phonetic markup
-    b = re.sub(r'\<\/?a.*?\>', '', b)
+    b=re.sub(r'\<\/?a.*?\>', '', b)
     # Replace opening tags with a newline, since usually a new section
-    b = re.sub(r'\<[^/].*?\>', '\n', b)
+    b=re.sub(r'\<[^/].*?\>', '\n', b)
     # Remove remaining tags
-    b = re.sub(r'\<.*?\>', '', b)
+    b=re.sub(r'\<.*?\>', '', b)
     # Max 2x newlines in a row
-    b = re.sub(r'\n{3,}', '\n\n', b)
-    LTYELLOW ="\033[1;33m"
-    LTRED    ="\033[1;31m"
+    b=re.sub(r'\n{3,}', '\n\n', b)
+    # TODO highlight 'term' in output (console colors). Use colorama
+    LTYELLOW="\033[1;33m"
+    LTRED="\033[1;31m"
     NOSTYLE="\033[0;0m"
-    b = re.sub(term, f"{LTRED}{term}{NOSTYLE}", b)
-    # TODO highlight 'term' in output (console colors)
+    b=re.sub(term, f"{LTRED}{term}{NOSTYLE}", b)
     print(b)
 
-exit("Not fetching right now")
-
-if not result:
-    print(f"No matches. Fetching: {url}")
-    url = 'http://www.woorden.org/woord/' + term
-    # This does an exact match for {term}
-    content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
-    # print(content)
+# TODO 
+# Or rather prompt to fetch or not
+if not result_exact:
+    url='http://www.woorden.org/woord/' + term
+    print(f"No exact match. Fetching: {url}")
+    # This service does an exact match for {term}
+    content=urllib.request.urlopen(
+        urllib.request.Request(url)).read().decode('utf-8')
+    # TODO find something Devel::Comments to enable/disable debug mode printing
 
 # TODO extract smarter
 # Start from ... <div class="slider-wrap" style="padding:10px">
-# But not including © (not always present)
-
-    match = re.search(f"(\<h2.*?{term}.*?)Kernerman Dictionaries", content)
-    # TODO validate match is not None
+# But not including © or rather "&copy" (but not always present)
+    match = re.search(f"(\<h2.*?{term}.*?)(?=&copy)", content)
+    if not match:
+        print("No matches.")
+        exit() # TODO wrap this in a def and just return / exception
     definition = match.group()
     # Duplicate check (deck scope) enabled by default
     note = {
         'deckName': 'nl',
         'modelName': 'Basic-nl',
-        'fields': { 'Front': term, 'Back': definition },
-        }
-    # print(note)
-
+        'fields': {'Front': term, 'Back': definition},
+    }
     card_id = invoke('addNote', note=note)
+    print(f"Added card: {card_id}")
+    # TODO call def to fetch and display this newly added exact match
 
-    # TODO make a separate def for displaying a card, rendered
-    print(card_id)
-    # TODO make a CLI option to delete (or edit?) a card by ID, for debugging
-    # That could just be part of the REPL after rendering a (set of?) card
-    cardsInfo = invoke('cardsInfo', cards=[card_id])
-    card = cardsInfo[0]
-    f = card['fields']['Front']['value']
-    b = card['fields']['Back']['value']
-    print(f)
-    print(b)
-
-# sync on exit. Note, this will focus the GUI
-# TODO, add CLI option to enable/disable
-# invoke('sync')

@@ -12,7 +12,7 @@ from optparse import OptionParser
 # # support a CLI option to search Back field (eg for idioms), and highlight matches
 # # CLI option to sync on exit, via GUI (if new cards successfully added)
 
-# REPL options
+# REPL options (interactive mode)
 # # open the GUI for the current search query in browse mode (to edit/append cards)
 # # https://github.com/FooSoft/anki-connect/blob/master/actions/graphical.md
 #
@@ -20,11 +20,25 @@ from optparse import OptionParser
 # See cardInfo response fields: interval, due, reps, lapses, left, (ord? , type?)
 # Lookup defs of fields, or just compare to what's displayed in card browser for an example card
 
+# Have a REPL option to 'f'etch the card I'm viewing, if it exists locally, show them for comparison
+# Have a REPL option to 'r'eplace the local card with the fetched.
+
 # Send to RTM as a fallback, when I need more research? (better as a separate thing, don't integrate it)
 # Or just a simple queue in the CLI, that stays pending, keep printing it out
 # ie just an option to defer adding a definition until later (in the run)
 # That would be for when woorden.nl has no results, for example.
 
+# Is this even worth it? What's the value?
+# Cleanup (does this only apply to the ones that aren't already HTML?)
+# Every occurrence of these words in a def (case sensitive) should be preceded by one/two newlines
+# Use a negative look behind assertion?
+# '(Uitspraak|Vervoegingen|Voorbeeld|Voorbeelden|Synoniem|Synoniem|Antoniem|Antoniemen): '
+# Also newline before these: ' .*?\.(naamw|werkw|article|pronoun|...)\..*$' # how to match until line end?
+# And also insert a newline before/after, to ease readability?
+# And all `text wrapped in backticks as quotes` should be on it's own line
+# Remove: 'Toon all vervoegingen'
+# Also, remove/replace tab chars '	' in defs
+# collapse 3+ newlines into 2 newlines everywhere
 
 def request(action, **params):
     return {'action': action, 'params': params, 'version': 6}
@@ -134,13 +148,13 @@ if not result_exact or opt.fetch:
     # TODO find something Devel::Comments to enable/disable debug mode printing
 
     # TODO extract smarter. Check DOM parsing libs
-    # Pages in diferent formats
+    # Pages in different formats
     # encyclo:     https://www.woorden.org/woord/hangertje
     # urlencoding: https://www.woorden.org/woord/op zich
     # none:        https://www.woorden.org/woord/spacen
     # ?:           https://www.woorden.org/woord/backspacen #
     # &copy:       http://www.woorden.org/woord/zien
-    # Bron:        
+    # Bron:        http://www.woorden.org/woord/glashelder
     match = re.search(f"(\<h2.*?{term}.*?)(?=&copy|Bron:|\<div|\<\/div)", content)
     # match = re.search(f'(\<h2.*?{term}.*?)(?=div)', content) # This should handle all cases (first new/closing div)
     if not match:
@@ -158,4 +172,4 @@ if not result_exact or opt.fetch:
     if opt.add:
         card_id = invoke('addNote', note=note)
         print(f"Added card: {card_id} :")
-        # TODO call def to fetch and display this newly added card (to verify)
+        # TODO call def to search and display this newly added card (to verify)

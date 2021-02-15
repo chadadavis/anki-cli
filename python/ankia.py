@@ -43,6 +43,7 @@ from optparse import OptionParser
 # Remove: 'Toon all vervoegingen'
 # Every occurrence of these words should be preceded by one/two newlines
 # Use a negative look behind assertion? Or just cleanup 3+ newlines later
+# (Could also put these bold/colored since they're headings, or maybe dim them since they're only structure not content)
 # '(Uitspraak|Vervoegingen|Voorbeeld|Voorbeelden|Synoniem|Synoniemen|Antoniem|Antoniemen): '
 # Also newline before these: '(?<=\s+)\S*(naamw|werkw|article|pronoun|...).*$'
 # Lookup how to match to end of newline eg: '?m:(?<=\s+)\S*(naamw|werkw|article|pronoun|woord|...).*$'
@@ -55,6 +56,10 @@ from optparse import OptionParser
 # Remove those too? But only when it's in 'Verbuigingen: ...' (check that it's on the same line)
 # If I prompt with a diff, then I don't need to be so careful, just prompt to remove all of them, show diff
 # Collapse multiple spaces (in between newlines)?
+# Remove whitespace at the start of a line
+# If the back begins with the term, delete the term (multi-word)
+# Insert a - before names of topical fields:
+# culinair medisch informeel
 
 # search for front:*style* to find cards w html on the front to clean (but then how to strip them ?)
 # When cleaning, having a dry-mode to show what would change before saving
@@ -203,9 +208,15 @@ def add_card(term, definition, deck='nl'):
     card_id = invoke('addNote', note=note)
     # TODO color INFO print
     print(f"Added card: {card_id}")
+
     # TODO call def to search, and render, this newly added card (to verify it's findable)
-    # card_ids = search(term)
+    # Seems to be a race condition after adding a new card, before we can get_card()
+    card_id = search(term)[0]
+
     card = get_card(card_id)
+    # print("card:\n")
+    # print(card)
+    
     render_card(card, term)
 
 
@@ -251,30 +262,43 @@ def main():
             print()
             return
         card_ids = search(term)
+        exact = False
         c = -1
         for card_id in card_ids:
             c += 1
             if c > 0:
                 try:
                     # TODO coloured info print (maybe a grey colour, or make content brighter)
-                    input(f"{c} of {len(card_ids)}")
+                    input(f"{c} of {len(card_ids)}\n")
                 except:
                     print()
                     break
+
             card = get_card(card_id)
+            if card['fields']['Front']['value'] == term:
+                exact = True
             render_card(card, term)
             # TODO options for eg edit a single card?
-        if card_ids:
-            continue
 
+
+        if exact:
+            continue
         # No local results. Now search web services:
+        try:
+            # TODO INFO print
+            input("No exact match. Fetch?\n")
+        except:
+            print()
+            continue
         definition = search_woorden(term)
         if definition:
             print(render(definition, highlight=term))
-            i=input(f"Add? [Y]/n ")
-            if i == '' or i == 'y' or i == 'Y':
-                add_card(term, definition)
-                # TODO easy way to re-search the same card here?
+            try:
+                input(f"Add?\n")
+            except:
+                print()
+                continue
+            add_card(term, definition)
             continue
 
         search_google(term)

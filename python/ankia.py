@@ -106,8 +106,10 @@ def render(string, highlight=None):
     # Max 2x newlines in a row
     string = re.sub(r'\n{3,}', '\n\n', string)
     if highlight:
-        # TODO needs to be case insensitive highlighting, test eg Zuiveren
-        string = re.sub(highlight, f"{LTRED}{highlight}{NOSTYLE}", string)
+        # Case insensitive highlighting
+        # Note, the (?i:...) doesn't create a group.
+        # That's why ({highlight}) needs it's own parens here.
+        string = re.sub(f"(?i:({highlight}))", f"{LTRED}\g<1>{NOSTYLE}", string)
     return string
 
 
@@ -281,7 +283,7 @@ def main():
                     break
 
             card = get_card(card_id)
-            if card['fields']['Front']['value'] == term:
+            if card['fields']['Front']['value'].casefold() == term.casefold():
                 exact = True
             render_card(card, term)
             # TODO options for eg edit a single card?

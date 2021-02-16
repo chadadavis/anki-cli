@@ -3,6 +3,7 @@ import urllib.request
 import urllib.parse
 import json
 import re
+import readline
 from optparse import OptionParser
 
 # TODOs
@@ -41,6 +42,7 @@ from optparse import OptionParser
 # And others should be permanently saved (removing junk)
 
 # Remove: 'Toon all vervoegingen'
+# Remove: tweede betekenisomschrijving 
 # Every occurrence of these words should be preceded by one/two newlines
 # Use a negative look behind assertion? Or just cleanup 3+ newlines later
 # (Could also put these bold/colored since they're headings, or maybe dim them since they're only structure not content)
@@ -58,8 +60,8 @@ from optparse import OptionParser
 # Collapse multiple spaces (in between newlines)?
 # Remove whitespace at the start of a line
 # If the back begins with the term, delete the term (multi-word)
-# Insert a - before names of topical fields:
-# culinair medisch informeel
+# Insert a - before/after, or wrap in [], the names of topical fields:
+# culinair medisch informeel juridisch biologie
 
 # search for front:*style* to find cards w html on the front to clean (but then how to strip them ?)
 # When cleaning, having a dry-mode to show what would change before saving
@@ -71,6 +73,9 @@ from optparse import OptionParser
 LTYELLOW = "\033[1;33m"
 LTRED = "\033[1;31m"
 NOSTYLE = "\033[0;0m"
+
+# TODO save global settings like 'nl' and 'Basic-nl' externally?
+# TODO use OptionParser , but default to my settings
 
 def request(action, **params):
     """Send a request to Anki desktop via anki_connect HTTP server addon
@@ -101,6 +106,7 @@ def render(string, highlight=None):
     # Max 2x newlines in a row
     string = re.sub(r'\n{3,}', '\n\n', string)
     if highlight:
+        # TODO needs to be case insensitive highlighting, test eg Zuiveren
         string = re.sub(highlight, f"{LTRED}{highlight}{NOSTYLE}", string)
     return string
 
@@ -181,14 +187,16 @@ def render_card(card, term=None):
     print(render(f, highlight=term))
     b = card['fields']['Back']['value']
     print(render(b, highlight=term))
+    # Update readline, to easily complete previously searched/found cards
+    if term and term != f:
+        readline.add_history(f)
 
 
 def search(term):
     # Search Anki: exact, then wildcard (front), then the back, then defer to Google
     try:
-        # TODO enable readline?
-        # TODO keep looping if term is empty
-        term = term or input("Search: ")
+        while not term:
+            term = input("Search: ")
     except:
         return
     card_ids = search_anki(term)
@@ -220,7 +228,6 @@ def add_card(term, definition, deck='nl'):
     render_card(card, term)
 
 
-
 def sync():
     invoke('sync')
 
@@ -230,11 +237,10 @@ def main():
     # Some menu options are global (sYnc) and others act on the displayed result
     # TODO remember the last query_term/card/note/content/card_id displayed
 
-    # Leave the search field always visible, editable
-    # TODO replace the search field with the last query, so that it's easy to edit/re-search
-    # Or use readline?
-
     # Use Ctrl-A combos for Add, etc, so that the search field is always just for searching?
+    # Readline can read a fixed number of bytes, but can I read single commands Ctrl-A ?
+    # https://docs.python.org/2/library/readline.html#module-readline
+
     menu = [
         [ 's', '[S]earch', search],
         # '[S]earch': search,

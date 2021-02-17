@@ -61,14 +61,25 @@ from optparse import OptionParser
 # Remove whitespace at the start of a line
 # If the back begins with the term, delete the term (multi-word)
 # Insert a - before/after, or wrap in [], the names of topical fields:
-# culinair medisch informeel juridisch biologie
+# culinair medisch informeel juridisch biologie kunst meteorologie 
 
+
+# Anki add: when populating readline with seen cards, the front field should be stripped of HTML, like the render function does already
 # search for front:*style* to find cards w html on the front to clean (but then how to strip them ?)
+
 # When cleaning, having a dry-mode to show what would change before saving
 # Show a diff, so that I can see what chars changed where
 # Warn before any mass changes to first do an export (via API?) See .config/backups/
 
-# TODO Use colorama, or at least refactor into functions by intent (print_info vs print_diff etc)
+# Anki Add, also parse out the spellcheck suggestions on the fetched page (test: hoiberg) and enable them to be fetched by eg assigning them numbers (single key press?)
+
+# Anki Add: match despite accents? op één lijn, geëxploiteerd - unidecode?
+
+# Anki add: pipe each display through less/PAGER --quit-if-one-screen
+# https://stackoverflow.com/a/39587824/256856
+# https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
+
+# TODO at least refactor into functions by intent (print_info vs print_diff etc)
 # TODO look for log4j style console logging/printing (with colors)
 LTYELLOW = "\033[1;33m"
 LTRED = "\033[1;31m"
@@ -106,6 +117,11 @@ def render(string, highlight=None):
     # Max 2x newlines in a row
     string = re.sub(r'\n{3,}', '\n\n', string)
     if highlight:
+        highlight = re.sub(r'[.]', '\.', highlight)
+        highlight = re.sub(r'[_]', '.', highlight)
+        highlight = re.sub(r'[*]', r'\\w*', highlight)
+        # TODO collapse double consonants eg ledemaat => ledema{1,2}t to also match 'ledematen'
+
         # Case insensitive highlighting
         # Note, the (?i:...) doesn't create a group.
         # That's why ({highlight}) needs it's own parens here.
@@ -126,8 +142,11 @@ def search_anki(term, deck='nl', wild=False, field='front', ):
 
 
 def info_print(content=""):
+    # Use colorama, or 
     print()
     print(LTYELLOW, end='')
+    # TODO use just a light grey thin line?
+    # TODO set to the whole width of the terminal?
     print('=' * 80)
     print(content)
     print(NOSTYLE, end='')
@@ -198,7 +217,7 @@ def search(term):
     # Search Anki: exact, then wildcard (front), then the back, then defer to Google
     try:
         while not term:
-            term = input("Search: ")
+            term = input("\nSearch: ")
     except:
         return
     card_ids = search_anki(term)
@@ -288,8 +307,8 @@ def main():
             render_card(card, term)
             # TODO options for eg edit a single card?
 
-
-        if exact:
+        # If it's a wildcard search, then exact match isn't relevant
+        if exact or re.search(r'\*', term):
             continue
         # No local results. Now search web services:
         try:
@@ -302,6 +321,7 @@ def main():
         if definition:
             print(render(definition, highlight=term))
             try:
+                # TODO INFO print
                 input(f"Add?\n")
             except:
                 print()

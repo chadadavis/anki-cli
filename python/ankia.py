@@ -4,6 +4,7 @@ import urllib.parse
 import json
 import re
 import readline
+import readchar
 from optparse import OptionParser
 
 # TODOs
@@ -43,26 +44,33 @@ from optparse import OptionParser
 
 # Remove: 'Toon all vervoegingen'
 # Remove: tweede betekenisomschrijving 
+# If the back begins with the term, delete the term (multi-word)
+
+# newline before these: '(?<=\s+)\S*(naamw|werkw|article|pronoun|...).*$'
+# Lookup how to match to end of newline eg: '?m:(?<=\s+)\S*(naamw|werkw|article|pronoun|woord|...).*$'
+# And also insert a newline before/after, to ease readability?
+
 # Every occurrence of these words should be preceded by one/two newlines
 # Use a negative look behind assertion? Or just cleanup 3+ newlines later
 # (Could also put these bold/colored since they're headings, or maybe dim them since they're only structure not content)
 # '(Uitspraak|Vervoegingen|Voorbeeld|Voorbeelden|Synoniem|Synoniemen|Antoniem|Antoniemen): '
-# Also newline before these: '(?<=\s+)\S*(naamw|werkw|article|pronoun|...).*$'
-# Lookup how to match to end of newline eg: '?m:(?<=\s+)\S*(naamw|werkw|article|pronoun|woord|...).*$'
-# And also insert a newline before/after, to ease readability?
+
+# Wrap in [], the names of topical fields, when it's the last word on the line
+# culinair medisch formeel informeel juridisch biologie kunst meteorologie landbouw
+
 # Numbered section on its' own line? '?m:^([0-9]+)\)\s*'
 # And all `text wrapped in backticks as quotes` should be on it's own line
 # Also, remove/replace tab chars '	' (ever needed?)
-# collapse 3+ newlines into 2 newlines everywhere
+
+
 # Bug: I cannot search for uitlaatgassen , since the card only contains: Verbuigingen: uitlaatgas|sen (split)
 # Remove those too? But only when it's in 'Verbuigingen: ...' (check that it's on the same line)
-# If I prompt with a diff, then I don't need to be so careful, just prompt to remove all of them, show diff
-# Collapse multiple spaces (in between newlines)?
-# Remove whitespace at the start of a line
-# If the back begins with the term, delete the term (multi-word)
-# Insert a - before/after, or wrap in [], the names of topical fields:
-# culinair medisch informeel juridisch biologie kunst meteorologie 
 
+# If I prompt with a diff, then I don't need to be so careful, just prompt to remove all of them, show diff
+
+# Collapse multiple spaces (in between newlines)?
+# Remove whitespace at the start of a line? Or keep the indentation? (sometimes helps)
+# collapse 3+ newlines into 2 newlines everywhere
 
 # Anki add: when populating readline with seen cards, the front field should be stripped of HTML, like the render function does already
 # search for front:*style* to find cards w html on the front to clean (but then how to strip them ?)
@@ -72,8 +80,6 @@ from optparse import OptionParser
 # Warn before any mass changes to first do an export (via API?) See .config/backups/
 
 # Anki Add, also parse out the spellcheck suggestions on the fetched page (test: hoiberg) and enable them to be fetched by eg assigning them numbers (single key press?)
-
-# Anki Add: match despite accents? op één lijn, geëxploiteerd - unidecode?
 
 # Anki add: pipe each display through less/PAGER --quit-if-one-screen
 # https://stackoverflow.com/a/39587824/256856
@@ -107,6 +113,7 @@ def invoke(action, **params):
 
 def render(string, highlight=None):
     # TODO render HTML another way? eg as Markdown instead?
+
     string = re.sub(r'&nbsp;', ' ', string)
     # Remove tags that are usually in the phonetic markup
     string = re.sub(r'\<\/?a.*?\>', '', string)
@@ -116,20 +123,34 @@ def render(string, highlight=None):
     string = re.sub(r'\<.*?\>', '', string)
     # Max 2x newlines in a row
     string = re.sub(r'\n{3,}', '\n\n', string)
+    # Remove seperators in plural "Verbuigingen" (note, just for display here)
+    string = re.sub(r'\|', '', string)
     if highlight:
         highlight = re.sub(r'[.]', '\.', highlight)
         highlight = re.sub(r'[_]', '.', highlight)
         highlight = re.sub(r'[*]', r'\\w*', highlight)
-        # TODO collapse double consonants eg ledemaat => ledema{1,2}t to also match 'ledematen'
+
+        # collapse double letters in the search term
+        # eg ledemaat => ledema{1,2}t can now also match 'ledematen'
+        highlight = re.sub(r'(.)\1', '\g<1>{1,2}', highlight)
+
 
         # Case insensitive highlighting
         # Note, the (?i:...) doesn't create a group.
         # That's why ({highlight}) needs it's own parens here.
         string = re.sub(f"(?i:({highlight}))", f"{LTRED}\g<1>{NOSTYLE}", string)
+
+        # TODO Highlight accent-insensitive? (Because accents don't change the semantics in NL)
+        # eg exploit should find geëxploiteerd
+        # Probably need to:
+        # Apply search to a unidecode'd copy.
+        # Then record all the patch positions, as [start,end) pairs,
+        # then, in reverse order (to preserve position numbers), wrap formatting markup around matches
+
     return string
 
 
-def search_anki(term, deck='nl', wild=False, field='front', ):
+def search_anki(term, deck='nl', wild=False, field='front', browse=False):
     # TODO save global settings like 'nl' and 'Basic-nl' externally?
     # can't have a ' ' char, for some reason,
     search_term = re.sub(r' ', '_', term) # For Anki searches
@@ -137,7 +158,10 @@ def search_anki(term, deck='nl', wild=False, field='front', ):
         wild = True
     if wild:
         search_term = f'*{search_term}*'
-    card_ids = invoke('findCards', query=f'deck:{deck} {field}:{search_term}')
+    if browse:
+        card_ids = invoke('guiBrowse', query=f'deck:{deck} {field}:{search_term}')
+    else:
+        card_ids = invoke('findCards', query=f'deck:{deck} {field}:{search_term}')
     return card_ids
 
 
@@ -154,6 +178,7 @@ def info_print(content=""):
 
 def search_google(term):
     query_term = urllib.parse.quote(term) # For web searches
+    # TODO 
     print(LTYELLOW, end='')
     print()
     print('=' * 80)
@@ -197,6 +222,7 @@ def get_card(id):
     return card
 
 
+# TODO this should return a string, rather than print
 def render_card(card, term=None):
     # TODO when front contains HTML, warn, dump it, and clean it and show diff
     # Auto replace, and use the updateNoteFields API? (after prompting)
@@ -213,8 +239,9 @@ def render_card(card, term=None):
         readline.add_history(f)
 
 
+# TODO deprecate
 def search(term):
-    # Search Anki: exact, then wildcard (front), then the back, then defer to Google
+    # Search Anki: exact, then wildcard (front), then the back
     try:
         while not term:
             term = input("\nSearch: ")
@@ -265,22 +292,81 @@ def main():
     menu = [
         [ 's', '[S]earch', search],
         # '[S]earch': search,
-        # 'Wild'  : ...,
-        # 'Back'  : ...,
-        # 'Add'   : add_card,
-        # 'sYnc'  : sync,
-        # ' '     : ..., # next_result
+        # 'Back'  : ..., # even if there was exact match last
+        # 'Add'   : add_card, # act on the last fetched card (if there is one)
+        # 'sYnc'  : sync, # enabled only if I've added new cards
+        # 'Fetch' : even if there is a local match
+        # 'Diff'  : run external diff (tempfiles) on local vs fetched (after rendering to text)
+        # 'Update': if the fetched and local differ
+        # 'Edit'  : Launch GUI editor?
+        # 'Delete': API?
+        # ' '     : ..., # next_result via space/enter
         # }
     ]
 
+    # TODO be able to add/remove possible commands, by context
+
+    term = None # term = input(f"Search: ") # Factor this into a function
+    content = None
+    card_id = None
+    while True:
+        if term:
+            print('Term: ' + term)
+        if card_id:
+            print('Card: ' + str(card_id))
+        if content:
+            print(render(content, highlight=term))
+            # And add the 'Add' option to the menu contextually')
+
+        # TODO add a provider for Encylo ? either parse it or open in browser?
+        info_print()
+        print('sYnc', 'Google', 'Quit', 'Search', 'Add', 'Wild', 'Back', 'bRowse', 'Fetch')
+        key = readchar.readkey()
+        if key in ('q', '\x03', '\x04'): # Ctrl-C, Ctrl-D
+            exit()
+        elif key == 'y':
+            sync()
+        elif key == 'r': # Open Anki browser, for the sake of delete/edit/etc
+            search_anki(term, browse=True)
+        elif key == 'w': # Search front with wildcard, or just search for *term*
+            card_ids = card_ids or search_anki(term, wild=True)
+        elif key == 'b': # Search back (implies wildcard matching)
+            card_ids = card_ids or search_anki(term, field='back')
+        elif key == 'f':
+            content = search_woorden(term)
+            # Don't need to do anything else here, since it's printed next round
+        elif key == 'g':
+            search_google(term)
+        elif key == 'a':
+            add_card(term, content)
+            content = None
+            # TODO save card_id so that we can operate on it later with Edit/Delete
+        elif key in ('s', '/'): # Exact match search
+
+            # TODO factor the setting of 'term' into a function
+            try:
+                # TODO colored INFO print
+                term = input(f"Search: ")
+            except:
+                continue # TODO why is this necessary to ignore exceptions?
+            # TODO save the result set of IDs ?
+            card_ids = search_anki(term)
+            if not card_ids:
+                print("No exact match")
+                card_id = None
+                content = None
+                continue
+            card_id, = card_ids
+            card = get_card(card_id)
+            # TODO make render_card just return the rendered definition,
+            # save in 'content', let it print on next iteration
+            render_card(card, term)
+        else:
+            ... # TODO beep/flash console here?
+
+
     # Menu loop
     while True:
-        # try:
-        #     # TODO build this from the dispatch table
-        #     # cmd = input("[S]earch [A]dd S[y]nc [Q]uit ")
-        #     # term = input("Search: ")
-        # except:
-        #     return
 
         # TODO colored INFO print
         try:
@@ -288,6 +374,8 @@ def main():
         except:
             print()
             return
+
+        # This is all only relevant if we want multiple matches
         card_ids = search(term)
         exact = False
         c = -1
@@ -319,10 +407,14 @@ def main():
             continue
         definition = search_woorden(term)
         if definition:
+            # TODO cleanup defnition here, before saving,
+            # eg remove | separator in plurals/Verbuigingen, etc
+            # See existing cleanups in render()
+            # Differentiate between render-specific and cleansups that should be persisted
             print(render(definition, highlight=term))
             try:
                 # TODO INFO print
-                input(f"Add?\n")
+                input(f"Add \"{term}']\"?\n")
             except:
                 print()
                 continue

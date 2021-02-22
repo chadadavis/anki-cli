@@ -3,6 +3,8 @@ import urllib.request
 import urllib.parse
 import json
 import re
+import os
+import time
 import readline
 import readchar
 from optparse import OptionParser
@@ -69,7 +71,7 @@ from optparse import OptionParser
 # If I prompt with a diff, then I don't need to be so careful, just prompt to remove all of them, show diff
 
 # Collapse multiple spaces (in between newlines)?
-# Remove whitespace at the start of a line? Or keep the indentation? (sometimes helps)
+# Remove whitespace at the start of a line? Or keep the indentation? (sometimes helps, but it's not consistent)
 # collapse 3+ newlines into 2 newlines everywhere
 
 # Anki add: when populating readline with seen cards, the front field should be stripped of HTML, like the render function does already
@@ -102,10 +104,15 @@ def request(action, **params):
     return {'action': action, 'params': params, 'version': 6}
 
 
+def launch_anki():
+    info_print('Launching anki ...')
+    os.system('anki >/dev/null 2>&1 &')
+
+
 def invoke(action, **params):
-    requestJson = json.dumps(request(action, **params)).encode('utf-8')
-    response = json.load(urllib.request.urlopen(
-        urllib.request.Request('http://localhost:8765', requestJson)))
+    reqJson = json.dumps(request(action, **params)).encode('utf-8')
+    req = urllib.request.Request('http://localhost:8765', reqJson)
+    response = json.load(urllib.request.urlopen(req))
     if response['error'] is not None:
         raise Exception(response['error'])
     return response['result']
@@ -113,6 +120,7 @@ def invoke(action, **params):
 
 def render(string, highlight=None):
     # TODO render HTML another way? eg as Markdown instead?
+    # And translate other entity codes? https://www.toptal.com/designers/htmlarrows/
 
     string = re.sub(r'&nbsp;', ' ', string)
     # Remove tags that are usually in the phonetic markup
@@ -165,15 +173,16 @@ def search_anki(term, deck='nl', wild=False, field='front', browse=False):
     return card_ids
 
 
-def info_print(content=""):
-    # Use colorama, or 
+def info_print(*values):
+    # TODO Use colorama
     print()
     print(LTYELLOW, end='')
     # TODO use just a light grey thin line?
     # TODO set to the whole width of the terminal?
     print('=' * 80)
-    print(content)
+    print(*values)
     print(NOSTYLE, end='')
+    print()
 
 
 def search_google(term):
@@ -182,8 +191,10 @@ def search_google(term):
     print(LTYELLOW, end='')
     print()
     print('=' * 80)
-    print(f"https://google.com/search?q={query_term}")
+    url=f'https://google.com/search?q={query_term}'
+    print(url)
     print(NOSTYLE, end='')
+    os.system(f'xdg-open {url} >/dev/null 2>&1 &')
     # TODO open in browser, via xdg in background process, disowned
 
 
@@ -208,10 +219,16 @@ def search_woorden(term, url='http://www.woorden.org/woord/'):
     # Bron:        http://www.woorden.org/woord/glashelder
 
     # TODO extract smarter. Check DOM parsing libs
+
+    # BUG parsing broken for 'stokken'
+    # BUG parsing broken for http://www.woorden.org/woord/tussenin
+
     match = re.search(f"(\<h2.*?{term}.*?)(?=&copy|Bron:|\<div|\<\/div)", content)
     # match = re.search(f'(\<h2.*?{term}.*?)(?=div)', content) # This should handle all cases (first new/closing div)
     if not match:
         return
+    # TODO also parse out the term in the definition, as it might differ from the search term
+    # eg searching for a past participle: geoormerkt => oormerken
     definition = match.group()
     return definition
 
@@ -241,6 +258,7 @@ def render_card(card, term=None):
 
 # TODO deprecate
 def search(term):
+    # TODO trim whitespace
     # Search Anki: exact, then wildcard (front), then the back
     try:
         while not term:
@@ -262,65 +280,63 @@ def add_card(term, definition, deck='nl'):
     }
     # Note, duplicate check (deck scope) enabled by default
     card_id = invoke('addNote', note=note)
-    # TODO color INFO print
-    print(f"Added card: {card_id}")
-
-    # TODO call def to search, and render, this newly added card (to verify it's findable)
-    # Seems to be a race condition after adding a new card, before we can get_card()
-    card_id = search(term)[0]
-
-    card = get_card(card_id)
-    # print("card:\n")
-    # print(card)
-    
-    render_card(card, term)
+    return card_id
 
 
 def sync():
-    invoke('sync')
+    try:
+        invoke('sync')
+    except:
+        # Probably just not running (don't loop on this assumption)
+        launch_anki()
+        time.sleep(5)
+        invoke('sync')
+
+def render_cards(card_ids, term=None):
+    c = -1
+    for card_id in card_ids:
+        # This is just for paginating results
+        c += 1
+        if c > 0:
+            try:
+                # TODO coloured info print (maybe a grey colour, or make content brighter)
+                info_print(f"{c} of {len(card_ids)}\n")
+                # TODO use read here, so that I can also press space to scroll
+                input()
+            except:
+                print()
+                break
+
+        card = get_card(card_id)
+        # TODO render_card should return a string
+        render_card(card, term)
 
 
 def main():
 
+    # TODO
     # Some menu options are global (sYnc) and others act on the displayed result
-    # TODO remember the last query_term/card/note/content/card_id displayed
 
-    # Use Ctrl-A combos for Add, etc, so that the search field is always just for searching?
-    # Readline can read a fixed number of bytes, but can I read single commands Ctrl-A ?
-    # https://docs.python.org/2/library/readline.html#module-readline
-
-    menu = [
-        [ 's', '[S]earch', search],
-        # '[S]earch': search,
-        # 'Back'  : ..., # even if there was exact match last
-        # 'Add'   : add_card, # act on the last fetched card (if there is one)
-        # 'sYnc'  : sync, # enabled only if I've added new cards
-        # 'Fetch' : even if there is a local match
-        # 'Diff'  : run external diff (tempfiles) on local vs fetched (after rendering to text)
-        # 'Update': if the fetched and local differ
-        # 'Edit'  : Launch GUI editor?
-        # 'Delete': API?
-        # ' '     : ..., # next_result via space/enter
-        # }
-    ]
-
-    # TODO be able to add/remove possible commands, by context
+    # Ensure anki is running and synced:
+    # sync()
 
     term = None # term = input(f"Search: ") # Factor this into a function
     content = None
     card_id = None
     while True:
-        if term:
-            print('Term: ' + term)
-        if card_id:
-            print('Card: ' + str(card_id))
         if content:
             print(render(content, highlight=term))
             # And add the 'Add' option to the menu contextually')
 
         # TODO add a provider for Encylo ? either parse it or open in browser?
-        info_print()
-        print('sYnc', 'Google', 'Quit', 'Search', 'Add', 'Wild', 'Back', 'bRowse', 'Fetch')
+        info_print('sYnc', 'Google', 'Quit', 'Search', 'Add', 'Wild', 'Back', 'bRowse', 'Fetch')
+        if term:
+            print('Term: ' + term)
+        if card_id:
+            print('Card: ' + str(card_id))
+        if term or card_id:
+            print()
+
         key = readchar.readkey()
         if key in ('q', '\x03', '\x04'): # Ctrl-C, Ctrl-D
             exit()
@@ -330,26 +346,28 @@ def main():
             search_anki(term, browse=True)
         elif key == 'w': # Search front with wildcard, or just search for *term*
             card_ids = card_ids or search_anki(term, wild=True)
+            # TODO report if no results?
+            render_cards(card_ids, term)
         elif key == 'b': # Search back (implies wildcard matching)
             card_ids = card_ids or search_anki(term, field='back')
+            # TODO report if no results?
+            render_cards(card_ids, term)
         elif key == 'f':
             content = search_woorden(term)
             # Don't need to do anything else here, since it's printed next round
         elif key == 'g':
             search_google(term)
         elif key == 'a':
-            add_card(term, content)
+            card_id = add_card(term, content)
             content = None
-            # TODO save card_id so that we can operate on it later with Edit/Delete
         elif key in ('s', '/'): # Exact match search
 
-            # TODO factor the setting of 'term' into a function
+            # TODO factor the prompt of 'term' into a function
             try:
                 # TODO colored INFO print
                 term = input(f"Search: ")
             except:
                 continue # TODO why is this necessary to ignore exceptions?
-            # TODO save the result set of IDs ?
             card_ids = search_anki(term)
             if not card_ids:
                 print("No exact match")
@@ -358,70 +376,11 @@ def main():
                 continue
             card_id, = card_ids
             card = get_card(card_id)
-            # TODO make render_card just return the rendered definition,
+            # TODO make render_card just return the rendered definition as string,
             # save in 'content', let it print on next iteration
             render_card(card, term)
         else:
             ... # TODO beep/flash console here?
-
-
-    # Menu loop
-    while True:
-
-        # TODO colored INFO print
-        try:
-            term = input(f"Search: ")
-        except:
-            print()
-            return
-
-        # This is all only relevant if we want multiple matches
-        card_ids = search(term)
-        exact = False
-        c = -1
-        for card_id in card_ids:
-            c += 1
-            if c > 0:
-                try:
-                    # TODO coloured info print (maybe a grey colour, or make content brighter)
-                    input(f"{c} of {len(card_ids)}\n")
-                except:
-                    print()
-                    break
-
-            card = get_card(card_id)
-            if card['fields']['Front']['value'].casefold() == term.casefold():
-                exact = True
-            render_card(card, term)
-            # TODO options for eg edit a single card?
-
-        # If it's a wildcard search, then exact match isn't relevant
-        if exact or re.search(r'\*', term):
-            continue
-        # No local results. Now search web services:
-        try:
-            # TODO INFO print
-            input("No exact match. Fetch?\n")
-        except:
-            print()
-            continue
-        definition = search_woorden(term)
-        if definition:
-            # TODO cleanup defnition here, before saving,
-            # eg remove | separator in plurals/Verbuigingen, etc
-            # See existing cleanups in render()
-            # Differentiate between render-specific and cleansups that should be persisted
-            print(render(definition, highlight=term))
-            try:
-                # TODO INFO print
-                input(f"Add \"{term}']\"?\n")
-            except:
-                print()
-                continue
-            add_card(term, definition)
-            continue
-
-        search_google(term)
 
 
 if __name__ == "__main__":

@@ -345,11 +345,11 @@ def main():
         elif key == 'r': # Open Anki browser, for the sake of delete/edit/etc
             search_anki(term, browse=True)
         elif key == 'w': # Search front with wildcard, or just search for *term*
-            card_ids = card_ids or search_anki(term, wild=True)
+            card_ids = search_anki(term, wild=True)
             # TODO report if no results?
             render_cards(card_ids, term)
         elif key == 'b': # Search back (implies wildcard matching)
-            card_ids = card_ids or search_anki(term, field='back')
+            card_ids = search_anki(term, field='back')
             # TODO report if no results?
             render_cards(card_ids, term)
         elif key == 'f':

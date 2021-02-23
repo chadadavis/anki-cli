@@ -126,6 +126,8 @@ def render(string, highlight=None):
     # And translate other entity codes? https://www.toptal.com/designers/htmlarrows/
 
     string = re.sub(r'&nbsp;', ' ', string)
+    string = re.sub(r'&[gl]t;', ' ', string)
+
     # Remove tags that are usually in the phonetic markup
     string = re.sub(r'\<\/?a.*?\>', '', string)
     # Replace opening tags with a newline, since usually a new section

@@ -365,7 +365,7 @@ def main():
             card_id = add_card(term, content)
             content = None
         elif key in ('s', '/'): # Exact match search
-
+            content = None
             # TODO do all the searches (by try to minimise exact and wildcard into one request)
             # And show the count of matches, eg:
             # Exact: 0 Front (Wild): 3 Back: 34 (so that I know if it's worth pressing W and B next)

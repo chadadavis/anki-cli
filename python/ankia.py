@@ -89,10 +89,13 @@ from optparse import OptionParser
 
 # TODO at least refactor into functions by intent (print_info vs print_diff etc)
 # TODO look for log4j style console logging/printing (with colors)
-LTYELLOW = "\033[1;33m"
-LTRED = "\033[1;31m"
-NOSTYLE = "\033[0;0m"
 
+# Color codes: https://stackoverflow.com/a/33206814/256856
+GREY     = "\033[0;02m"
+DBLUE    = "\033[0;30m"
+LTYELLOW = "\033[0;33m"
+LTRED    = "\033[1;31m" # the '1;' makes it bold as well
+NOSTYLE  = "\033[0;0m"
 # TODO save global settings like 'nl' and 'Basic-nl' externally?
 # TODO use OptionParser , but default to my settings
 
@@ -150,6 +153,8 @@ def render(string, highlight=None):
 
         # TODO Highlight accent-insensitive? (Because accents don't change the semantics in NL)
         # eg exploit should find geëxploiteerd
+        # It should be possible with non-combining mode: nc:geëxploiteerd but doesn't seem to work
+        # https://docs.ankiweb.net/#/searching
         # Probably need to:
         # Apply search to a unidecode'd copy.
         # Then record all the patch positions, as [start,end) pairs,
@@ -160,55 +165,54 @@ def render(string, highlight=None):
 
 def search_anki(term, deck='nl', wild=False, field='front', browse=False):
     # TODO save global settings like 'nl' and 'Basic-nl' externally?
-    # can't have a ' ' char, for some reason,
+    # can't have a ' ' char, for some reason (otherwise have to quote phrases)
     search_term = re.sub(r' ', '_', term) # For Anki searches
+    # TODO collapse double letters into a disjunction, eg:
+    # deck:nl (front:dooen OR front:doen)
+    # or use a re: (but that doesn't seem to work)
+
     if field == 'back':
         wild = True
     if wild:
         search_term = f'*{search_term}*'
+    query = f'deck:{deck} {field}:{search_term}'
+    # info_print(f'query:{query}')
     if browse:
-        card_ids = invoke('guiBrowse', query=f'deck:{deck} {field}:{search_term}')
+        card_ids = invoke('guiBrowse', query=query)
     else:
-        card_ids = invoke('findCards', query=f'deck:{deck} {field}:{search_term}')
+        card_ids = invoke('findCards', query=query)
     return card_ids
 
 
 def info_print(*values):
     # TODO Use colorama
     print()
-    print(LTYELLOW, end='')
+    print(GREY, end='')
     # TODO use just a light grey thin line?
     # TODO set to the whole width of the terminal?
-    print('=' * 80)
+    print('_' * 80)
     print(*values)
     print(NOSTYLE, end='')
-    print()
+    if values:
+        print()
 
 
 def search_google(term):
     query_term = urllib.parse.quote(term) # For web searches
-    # TODO 
-    print(LTYELLOW, end='')
-    print()
-    print('=' * 80)
     url=f'https://google.com/search?q={query_term}'
-    print(url)
-    print(NOSTYLE, end='')
-    os.system(f'xdg-open {url} >/dev/null 2>&1 &')
-    # TODO open in browser, via xdg in background process, disowned
+    cmd = f'xdg-open {url} >/dev/null 2>&1 &'
+    info_print(cmd)
+    os.system(cmd)
 
 
 def search_woorden(term, url='http://www.woorden.org/woord/'):
+    """The term will be appended to the url"""
     # TODO generalize this for other online dictionaries?
     # eg parameterize base_url (with a %s substitute, and the regex ?)
-    """The term will be appended to the url"""
     query_term = urllib.parse.quote(term) # For web searches
     url = url + query_term
-    print(LTYELLOW, end='')
-    print('=' * 80)
-    # TODO use something log log4j with INFO level here, or Devel::Comments like?
-    print(f"Fetching: {url}")
-    print(NOSTYLE, end='')
+    info_print(f"Fetching: {url}")
+
     content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
     # Pages in different formats, for testing:
     # encyclo:     https://www.woorden.org/woord/hangertje
@@ -244,9 +248,8 @@ def render_card(card, term=None):
     # TODO when front contains HTML, warn, dump it, and clean it and show diff
     # Auto replace, and use the updateNoteFields API? (after prompting)
     # https://github.com/FooSoft/anki-connect/blob/master/actions/notes.md
-    print(LTYELLOW, end='')
-    print('=' * 80)
-    print(NOSTYLE, end='')
+
+    info_print()
     f = card['fields']['Front']['value']
     print(render(f, highlight=term))
     b = card['fields']['Back']['value']
@@ -324,18 +327,19 @@ def main():
     content = None
     card_id = None
     while True:
+
+        if term or card_id:
+            info_print()
         if content:
             print(render(content, highlight=term))
-            # And add the 'Add' option to the menu contextually')
-
-        # TODO add a provider for Encylo ? either parse it or open in browser?
-        info_print('sYnc', 'Google', 'Quit', 'Search', 'Add', 'Wild', 'Back', 'bRowse', 'Fetch')
+            # TODO And add the 'Add' option to the menu contextually
         if term:
             print('Term: ' + term)
         if card_id:
             print('Card: ' + str(card_id))
-        if term or card_id:
-            print()
+
+        # TODO add a provider for Encylo ? either parse it or open in browser?
+        info_print('/ [S]earch', '[W]ild', '[B]ack', '[F]etch', '[G]oogle', '[A]dd', 'B[r]owse', '|', 'S[y]nc', '[Q]uit',)
 
         key = readchar.readkey()
         if key in ('q', '\x03', '\x04'): # Ctrl-C, Ctrl-D
@@ -361,6 +365,13 @@ def main():
             card_id = add_card(term, content)
             content = None
         elif key in ('s', '/'): # Exact match search
+
+            # TODO do all the searches (by try to minimise exact and wildcard into one request)
+            # And show the count of matches, eg:
+            # Exact: 0 Front (Wild): 3 Back: 34 (so that I know if it's worth pressing W and B next)
+            # But then only automatically show exact, if it exists, else await other commands
+            # Else if wild, only automatically show Wild, but just the count for Back
+            # Else if (only) back matches, automatically show back
 
             # TODO factor the prompt of 'term' into a function
             try:

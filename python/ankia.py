@@ -19,6 +19,8 @@ from optparse import OptionParser
 # See cardInfo response fields: interval, due, reps, lapses, left, (ord? , type?)
 # Lookup defs of fields, or just compare to what's displayed in card browser for an example card
 
+# TODO add a provider for Encylo ? either parse it or open in browser?
+
 # TODO make a CLI/REPL option to delete (or edit?) a card (by ID), for debugging
 # That could just be part of the REPL after rendering a (set of?) card
 
@@ -167,18 +169,30 @@ def render(string, highlight=None):
 
 def search_anki(term, deck='nl', wild=False, field='front', browse=False):
     # TODO save global settings like 'nl' and 'Basic-nl' externally?
-    # can't have a ' ' char, for some reason (otherwise have to quote phrases)
+
+    # If term contains whitespace, either must quote the whole thing, or replace spaces:
     search_term = re.sub(r' ', '_', term) # For Anki searches
-    # TODO collapse double letters into a disjunction, eg:
+
+    # Collapse double letters into a disjunction, eg: (NL-specific)
     # deck:nl (front:dooen OR front:doen)
     # or use a re: (but that doesn't seem to work)
+    # TODO BUG: this isn't a proper Combination (maths), so it misses some cases
+    terms = [search_term]
+    while True:
+        next_term = re.sub(r'(.)\1', '\g<1>', search_term, count=1)
+        if next_term == search_term:
+            break
+        terms += [next_term]
+        search_term = next_term
 
     if field == 'back':
         wild = True
     if wild:
-        search_term = f'*{search_term}*'
-    query = f'deck:{deck} {field}:{search_term}'
+        terms = map(lambda x: f'*{x}*', terms)
+    terms = map(lambda x: field + ':' + x, terms)
+    query = f'deck:{deck} (' + ' OR '.join([*terms]) + ')'
     # info_print(f'query:{query}')
+
     if browse:
         card_ids = invoke('guiBrowse', query=query)
     else:
@@ -303,13 +317,9 @@ def render_cards(card_ids, term=None):
         # This is just for paginating results
         c += 1
         if c > 0:
-            try:
-                # TODO coloured info print (maybe a grey colour, or make content brighter)
-                info_print(f"{c} of {len(card_ids)}\n")
-                # TODO use read here, so that I can also press space to scroll
-                input()
-            except:
-                print()
+            info_print(f"{c} of {len(card_ids)}")
+            key = readchar.readkey()
+            if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
                 break
 
         card = get_card(card_id)
@@ -330,6 +340,7 @@ def main():
     card_id = None
     while True:
 
+        # Remind the user of any previous context
         if term or card_id:
             info_print()
         if content:
@@ -340,60 +351,64 @@ def main():
         if card_id:
             print('Card: ' + str(card_id))
 
-        # TODO add a provider for Encylo ? either parse it or open in browser?
         info_print('/ [S]earch', '[W]ild', '[B]ack', '[F]etch', '[G]oogle', '[A]dd', 'B[r]owse', '|', 'S[y]nc', '[Q]uit',)
 
-        key = readchar.readkey()
-        if key in ('q', '\x03', '\x04'): # Ctrl-C, Ctrl-D
-            exit()
-        elif key == 'y':
-            sync()
-        elif key == 'r': # Open Anki browser, for the sake of delete/edit/etc
-            search_anki(term, browse=True)
-        elif key == 'w': # Search front with wildcard, or just search for *term*
-            card_ids = search_anki(term, wild=True)
-            # TODO report if no results?
-            render_cards(card_ids, term)
-        elif key == 'b': # Search back (implies wildcard matching)
-            card_ids = search_anki(term, field='back')
-            # TODO report if no results?
-            render_cards(card_ids, term)
-        elif key == 'f':
-            content = search_woorden(term)
-            # Don't need to do anything else here, since it's printed next round
-        elif key == 'g':
-            search_google(term)
-        elif key == 'a':
-            card_id = add_card(term, content)
-            content = None
-        elif key in ('s', '/'): # Exact match search
-            content = None
-            # TODO do all the searches (by try to minimise exact and wildcard into one request)
-            # And show the count of matches, eg:
-            # Exact: 0 Front (Wild): 3 Back: 34 (so that I know if it's worth pressing W and B next)
-            # But then only automatically show exact, if it exists, else await other commands
-            # Else if wild, only automatically show Wild, but just the count for Back
-            # Else if (only) back matches, automatically show back
-
-            # TODO factor the prompt of 'term' into a function
-            try:
-                # TODO colored INFO print
-                term = input(f"Search: ")
-            except:
-                continue # TODO why is this necessary to ignore exceptions?
-            card_ids = search_anki(term)
-            if not card_ids:
-                print("No exact match")
-                card_id = None
+        key = None
+        while not key:
+            key = readchar.readkey()
+            if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
+                exit()
+            elif key == 'y':
+                sync()
+            elif key == 'r': # Open Anki browser, for the sake of delete/edit/etc
+                search_anki(term, browse=True)
+            elif key == 'w': # Search front with wildcard, or just search for *term*
+                card_ids = search_anki(term, wild=True)
+                # TODO report if no results?
+                render_cards(card_ids, term)
+            elif key == 'b': # Search back (implies wildcard matching)
+                card_ids = search_anki(term, field='back')
+                # TODO report if no results?
+                render_cards(card_ids, term)
+            elif key == 'f':
+                content = search_woorden(term)
+                # Don't need to do anything else here, since it's printed next round
+            elif key == 'g':
+                search_google(term)
+            elif key == 'a':
+                card_id = add_card(term, content)
                 content = None
-                continue
-            card_id, = card_ids
-            card = get_card(card_id)
-            # TODO make render_card just return the rendered definition as string,
-            # save in 'content', let it print on next iteration
-            render_card(card, term)
-        else:
-            ... # TODO beep/flash console here?
+            elif key in ('s', '/'): # Exact match search
+                content = None
+                # TODO do all the searches (by try to minimise exact and wildcard into one request)
+                # And show the count of matches, eg:
+                # Exact: 0 Front (Wild): 3 Back: 34 (so that I know if it's worth pressing W and B next)
+                # But then only automatically show exact, if it exists, else await other commands
+                # Else if wild, only automatically show Wild, but just the count for Back
+                # Else if (only) back matches, automatically show back
+
+                # TODO factor the prompt of 'term' into a function?
+                try:
+                    # TODO colored INFO print
+                    term = input(f"Search: ")
+                except:
+                    continue # TODO why is this necessary to ignore exceptions?
+                card_ids = search_anki(term)
+                if not card_ids:
+                    print("No exact match")
+                    card_id = None
+                    content = None
+                    continue
+                card_id, = card_ids
+                card = get_card(card_id)
+                # TODO make render_card just return the rendered definition as string,
+                # save in 'content', let it print on next iteration
+                render_card(card, term)
+            else:
+                # Unrecognized command. Beep.
+                print("\a", end='', flush=True)
+                # Repeat input
+                key = None
 
 
 if __name__ == "__main__":

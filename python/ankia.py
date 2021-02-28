@@ -19,6 +19,8 @@ from optparse import OptionParser
 # See cardInfo response fields: interval, due, reps, lapses, left, (ord? , type?)
 # Lookup defs of fields, or just compare to what's displayed in card browser for an example card
 
+# Anki Add: figure out how to package deps (eg readchar) and test it again after removing local install of readchar
+
 # TODO add a provider for Encylo ? either parse it or open in browser?
 
 # TODO make a CLI/REPL option to delete (or edit?) a card (by ID), for debugging
@@ -54,13 +56,8 @@ from optparse import OptionParser
 # Lookup how to match to end of newline eg: '?m:(?<=\s+)\S*(naamw|werkw|article|pronoun|woord|...).*$'
 # And also insert a newline before/after, to ease readability?
 
-# Every occurrence of these words should be preceded by one/two newlines
-# Use a negative look behind assertion? Or just cleanup 3+ newlines later
-# (Could also put these bold/colored since they're headings, or maybe dim them since they're only structure not content)
-# '(Uitspraak|Vervoegingen|Voorbeeld|Voorbeelden|Synoniem|Synoniemen|Antoniem|Antoniemen): '
-
 # Wrap in [], the names of topical fields, when it's the last word on the line
-# culinair medisch formeel informeel juridisch biologie kunst meteorologie landbouw
+# culinair medisch formeel informeel juridisch biologie kunst meteorologie landbouw wiskunde
 
 # Numbered section on its' own line? '?m:^([0-9]+)\)\s*'
 # And all `text wrapped in backticks as quotes` should be on it's own line
@@ -71,10 +68,6 @@ from optparse import OptionParser
 # Remove those too? But only when it's in 'Verbuigingen: ...' (check that it's on the same line)
 
 # If I prompt with a diff, then I don't need to be so careful, just prompt to remove all of them, show diff
-
-# Collapse multiple spaces (in between newlines)?
-# Remove whitespace at the start of a line? Or keep the indentation? (sometimes helps, but it's not consistent)
-# collapse 3+ newlines into 2 newlines everywhere
 
 # Anki add: when populating readline with seen cards, the front field should be stripped of HTML, like the render function does already
 # search for front:*style* to find cards w html on the front to clean (but then how to strip them ?)
@@ -125,30 +118,56 @@ def invoke(action, **params):
 
 def render(string, highlight=None):
     # TODO render HTML another way? eg as Markdown instead?
-    # And translate other entity codes? https://www.toptal.com/designers/htmlarrows/
 
+    # HTML-specific:
     string = re.sub(r'&nbsp;', ' ', string)
     string = re.sub(r'&[gl]t;', ' ', string)
-
     # Remove tags that are usually in the phonetic markup
     string = re.sub(r'\<\/?a.*?\>', '', string)
     # Replace opening tags with a newline, since usually a new section
     string = re.sub(r'\<[^/].*?\>', '\n', string)
     # Remove remaining tags
     string = re.sub(r'\<.*?\>', '', string)
+
+    # Non-HTML-specific:
+    # Collapse sequences of space/tab chars
+    string = re.sub(r'\t', ' ', string)
+    string = re.sub(r' {2,}', ' ', string)
+
+    # Ensure headings begin on their own line
+    # TODO put these bold/colored/dimmed since they're headings? (then put them on their own line)
+    string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', '\n\g<1>', string)
+
+    # Newlines before `phrases in backticks`
+    # (but not *after*, else you'd get single commas on a line, etc)
+    # (using a negative lookbehind assertion here)
+    string = re.sub(r'(?<!\n)(`.*?`)', '\n\g<1>', string)
+    # Delete leading/trailing space on the entry as a whole
+    string = re.sub(r'^\s+', '', string)
+    string = re.sub(r'\s+$', '', string)
+    # And leading/trailing space per line
+    string = re.sub(r'(?m)^ +', '', string)
+    string = re.sub(r'(?m) +$', '', string)
     # Max 2x newlines in a row
     string = re.sub(r'\n{3,}', '\n\n', string)
-    # Remove seperators in plural "Verbuigingen" (note, just for display here)
+
+    # NL-specific (or specific to woorden.org)
+    # Remove seperators in plurals (eg in "Verbuigingen")
+    # (note, just for display here, doesn't help with matching)
     string = re.sub(r'\|', '', string)
+
     if highlight:
         highlight = re.sub(r'[.]', '\.', highlight)
         highlight = re.sub(r'[_]', '.', highlight)
         highlight = re.sub(r'[*]', r'\\w*', highlight)
 
-        # collapse double letters in the search term
+        # NL-specific
+        # Collapse double letters in the search term
         # eg ledemaat => ledema{1,2}t can now also match 'ledematen'
+        # This is because the examples in the 'back' field will include declined forms
         highlight = re.sub(r'(.)\1', '\g<1>{1,2}', highlight)
-
+        # Strip the term from the start of the definition
+        string = re.sub(r'^\s*' + highlight + r'\s*', '', string)
 
         # Case insensitive highlighting
         # Note, the (?i:...) doesn't create a group.
@@ -174,9 +193,11 @@ def search_anki(term, deck='nl', wild=False, field='front', browse=False):
     search_term = re.sub(r' ', '_', term) # For Anki searches
 
     # Collapse double letters into a disjunction, eg: (NL-specific)
+    # This implies that the user should, when in doubt, use doubble chars in the querry
     # deck:nl (front:dooen OR front:doen)
     # or use a re: (but that doesn't seem to work)
     # TODO BUG: this isn't a proper Combination (maths), so it misses some cases
+
     terms = [search_term]
     while True:
         next_term = re.sub(r'(.)\1', '\g<1>', search_term, count=1)
@@ -381,8 +402,9 @@ def main():
             elif key in ('s', '/'): # Exact match search
                 content = None
                 # TODO do all the searches (by try to minimise exact and wildcard into one request)
-                # And show the count of matches, eg:
+                # And show the count/number of matches, eg:
                 # Exact: 0 Front (Wild): 3 Back: 34 (so that I know if it's worth pressing W and B next)
+                # Also so that I have visual feedback when there's only 1 match from Wild or Back
                 # But then only automatically show exact, if it exists, else await other commands
                 # Else if wild, only automatically show Wild, but just the count for Back
                 # Else if (only) back matches, automatically show back
@@ -399,11 +421,16 @@ def main():
                     card_id = None
                     content = None
                     continue
-                card_id, = card_ids
-                card = get_card(card_id)
+                # TODO bug, since we collapse doubles, this could have more than one result, eg 'maan'/'man'
+                # Factor out into eg render_cards()
+                if len(card_ids) == 1:
+                    card_id, = card_ids
+                else:
+                    card_id = None
+                # card = get_card(card_id)
                 # TODO make render_card just return the rendered definition as string,
                 # save in 'content', let it print on next iteration
-                render_card(card, term)
+                render_cards(card_ids, term)
             else:
                 # Unrecognized command. Beep.
                 print("\a", end='', flush=True)

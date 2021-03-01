@@ -56,9 +56,6 @@ from optparse import OptionParser
 # Lookup how to match to end of newline eg: '?m:(?<=\s+)\S*(naamw|werkw|article|pronoun|woord|...).*$'
 # And also insert a newline before/after, to ease readability?
 
-# Wrap in [], the names of topical fields, when it's the last word on the line
-# culinair medisch formeel informeel juridisch biologie kunst meteorologie landbouw wiskunde
-
 # Numbered section on its' own line? '?m:^([0-9]+)\)\s*'
 # And all `text wrapped in backticks as quotes` should be on it's own line
 # Also, remove/replace tab chars '	' (ever needed?)
@@ -88,7 +85,8 @@ from optparse import OptionParser
 # Color codes: https://stackoverflow.com/a/33206814/256856
 GREY     = "\033[0;02m"
 DBLUE    = "\033[0;30m"
-LTYELLOW = "\033[0;33m"
+YELLOW   = "\033[0;33m"
+LTYELLOW = "\033[1;33m"
 LTRED    = "\033[1;31m" # the '1;' makes it bold as well
 NOSTYLE  = "\033[0;0m"
 # TODO save global settings like 'nl' and 'Basic-nl' externally?
@@ -116,7 +114,7 @@ def invoke(action, **params):
     return response['result']
 
 
-def render(string, highlight=None):
+def render(string, highlight=None, front=None):
     # TODO render HTML another way? eg as Markdown instead?
 
     # HTML-specific:
@@ -134,14 +132,22 @@ def render(string, highlight=None):
     string = re.sub(r'\t', ' ', string)
     string = re.sub(r' {2,}', ' ', string)
 
+    # NL-specific (or specific to woorden.org)
+    string = re.sub(r'Toon alle vervoegingen', '', string)
     # Ensure headings begin on their own line
     # TODO put these bold/colored/dimmed since they're headings? (then put them on their own line)
     string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', '\n\g<1>', string)
-
+    # Remove seperators in plurals (eg in "Verbuigingen")
+    # (note, just for display here, doesn't help with matching)
+    string = re.sub(r'\|', '', string)
+    # TODO how to match (either direction) verdwaz(en) <=> verdwaas(de)
+    #      Look into stemming libraries? (Could be a useful Addon for Anki too)
+    #      And one that also maps irregular verbs? liggen => gelegen ?
     # Newlines before `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
     # (using a negative lookbehind assertion here)
     string = re.sub(r'(?<!\n)(`.*?`)', '\n\g<1>', string)
+
     # Delete leading/trailing space on the entry as a whole
     string = re.sub(r'^\s+', '', string)
     string = re.sub(r'\s+$', '', string)
@@ -151,23 +157,32 @@ def render(string, highlight=None):
     # Max 2x newlines in a row
     string = re.sub(r'\n{3,}', '\n\n', string)
 
-    # NL-specific (or specific to woorden.org)
-    # Remove seperators in plurals (eg in "Verbuigingen")
-    # (note, just for display here, doesn't help with matching)
-    string = re.sub(r'\|', '', string)
+    # Wrap in [], the names of topical fields, when it's last (and not first) on the line
+    categories = 'culinair|medisch|informeel|formeel|juridisch|biologie|kunst|meteorologie|landbouw|wiskunde'
+    string = re.sub(f'(?m)(?<!^)({categories})$', '[\g<1>]', string)
+
+    if front:
+        # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)
+        string = re.sub(f'^\s*{front}\s*', '', string)
+        # And add it back canonically
+        string = YELLOW + front + NOSTYLE + '\n' + string
 
     if highlight:
         highlight = re.sub(r'[.]', '\.', highlight)
         highlight = re.sub(r'[_]', '.', highlight)
         highlight = re.sub(r'[*]', r'\\w*', highlight)
 
+
         # NL-specific
+        # Hack stemming
+        suffixes = 'ende|end|en|de|d|ste|ten|te|t|sen|zen|ze|je|es|e|\'?s'
+        highlight = re.sub(f'({suffixes})$', '', highlight)
+        highlight = f"(ge)?{highlight}({suffixes})?"
+
         # Collapse double letters in the search term
         # eg ledemaat => ledema{1,2}t can now also match 'ledematen'
         # This is because the examples in the 'back' field will include declined forms
         highlight = re.sub(r'(.)\1', '\g<1>{1,2}', highlight)
-        # Strip the term from the start of the definition
-        string = re.sub(r'^\s*' + highlight + r'\s*', '', string)
 
         # Case insensitive highlighting
         # Note, the (?i:...) doesn't create a group.
@@ -223,9 +238,7 @@ def search_anki(term, deck='nl', wild=False, field='front', browse=False):
 
 def info_print(*values):
     # TODO Use colorama
-    print()
     print(GREY, end='')
-    # TODO use just a light grey thin line?
     # TODO set to the whole width of the terminal?
     print('_' * 80)
     print(*values)
@@ -238,7 +251,7 @@ def search_google(term):
     query_term = urllib.parse.quote(term) # For web searches
     url=f'https://google.com/search?q={query_term}'
     cmd = f'xdg-open {url} >/dev/null 2>&1 &'
-    info_print(cmd)
+    info_print(f"Opening: {url}")
     os.system(cmd)
 
 
@@ -288,12 +301,11 @@ def render_card(card, term=None):
 
     info_print()
     f = card['fields']['Front']['value']
-    print(render(f, highlight=term))
     b = card['fields']['Back']['value']
-    print(render(b, highlight=term))
-    # Update readline, to easily complete previously searched/found cards
-    if term and term != f:
-        readline.add_history(f)
+    print(render(b, highlight=term, front=f))
+    # # Update readline, to easily complete previously searched/found cards
+    # if term and term != f:
+    #     readline.add_history(f)
 
 
 # TODO deprecate
@@ -362,21 +374,31 @@ def main():
     while True:
 
         # Remind the user of any previous context
-        if term or card_id:
-            info_print()
         if content:
             print(render(content, highlight=term))
-            # TODO And add the 'Add' option to the menu contextually
-        if term:
-            print('Term: ' + term)
-        if card_id:
-            print('Card: ' + str(card_id))
 
-        info_print('/ [S]earch', '[W]ild', '[B]ack', '[F]etch', '[G]oogle', '[A]dd', 'B[r]owse', '|', 'S[y]nc', '[Q]uit',)
+        # TODO And add the 'Add' option to the menu contextually
+        menu = [
+            '', '/ [S]earch', '[W]ild', '[B]ack', '[F]etch', '[G]oogle', '[A]dd', 'B[r]owse', '|', 'S[y]nc', '[Q]uit', '|',
+        ]
+        if term:
+            menu = menu + [f"Term: [{term}]"]
+        if card_id:
+            menu = menu + [f"Card: [{str(card_id)}]"]
+
+        menu = ' '.join(menu + [''])
+        menu = re.sub(r'\[', '[' + LTYELLOW, menu)
+        menu = re.sub(r'\]', NOSTYLE + ']' , menu)
 
         key = None
         while not key:
+            print(menu + '\r', end='', flush=True)
             key = readchar.readkey()
+            # Clear the menu:
+            # TODO detect screen width (or try curses lib)
+            # print('\r' + (' ' * 80) + '\r', end='', flush='True')
+            print('\r' + (' ' * 160) + '\r', end='', flush='True')
+
             if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
                 exit()
             elif key == 'y':

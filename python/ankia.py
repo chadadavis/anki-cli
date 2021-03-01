@@ -371,6 +371,8 @@ def main():
     term = None # term = input(f"Search: ") # Factor this into a function
     content = None
     card_id = None
+    wild_n = None
+    back_n = None
     while True:
         menu = [
             '', '/ [S]earch', '|', 'S[y]nc', '[Q]uit', '|',
@@ -378,9 +380,15 @@ def main():
         # Remind the user of any previous context, and then allow to Add
         if content:
             print(render(content, highlight=term))
-            menu = menu + ['[A]dd']
+            menu += ['[A]dd']
         if term:
-            menu = menu + ['[W]ild', '[B]ack', 'B[r]owse', '[F]etch', '[G]oogle', '|']
+            menu += ['B[r]owse', '[F]etch', '[G]oogle', '|']
+            if wild_n:
+                wild = f"[W]ild [{wild_n}]"
+                menu += [wild]
+            if back_n:
+                back = f"[B]ack [{back_n}]"
+                menu += [back]
             menu = menu + [f"Term: [{term}]"]
         if card_id:
             menu = menu + [f"Card: [{str(card_id)}]"]
@@ -404,33 +412,26 @@ def main():
                 print('\033c')
             elif key == 'y':
                 sync()
-            elif key == 'r': # Open Anki browser, for the sake of delete/edit/etc
+            elif term and key == 'r': # Open Anki browser, for the sake of delete/edit/etc
                 search_anki(term, browse=True)
-            elif key == 'w': # Search front with wildcard, or just search for *term*
+            elif wild_n and key == 'w': # Search front with wildcard, or just search for *term*
                 card_ids = search_anki(term, wild=True)
                 # TODO report if no results?
                 render_cards(card_ids, term)
-            elif key == 'b': # Search back (implies wildcard matching)
+            elif back_n and key == 'b': # Search back (implies wildcard matching)
                 card_ids = search_anki(term, field='back')
                 # TODO report if no results?
                 render_cards(card_ids, term)
-            elif key == 'f':
+            elif term and key == 'f':
                 content = search_woorden(term)
                 # Don't need to do anything else here, since it's printed next round
-            elif key == 'g':
+            elif term and key == 'g':
                 search_google(term)
-            elif key == 'a':
+            elif content and key == 'a':
                 card_id = add_card(term, content)
                 content = None
             elif key in ('s', '/'): # Exact match search
                 content = None
-                # TODO do all the searches (by try to minimise exact and wildcard into one request)
-                # And show the count/number of matches, eg:
-                # Exact: 0 Front (Wild): 3 Back: 34 (so that I know if it's worth pressing W and B next)
-                # Also so that I have visual feedback when there's only 1 match from Wild or Back
-                # But then only automatically show exact, if it exists, else await other commands
-                # Else if wild, only automatically show Wild, but just the count for Back
-                # Else if (only) back matches, automatically show back
 
                 # TODO factor the prompt of 'term' into a function?
                 try:
@@ -439,6 +440,11 @@ def main():
                 except:
                     continue # TODO why is this necessary to ignore exceptions?
                 card_ids = search_anki(term)
+                # Check other possible query types:
+                # TODO do all the searches (by try to minimise exact and wildcard into one request)
+                # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
+                wild_n = len(search_anki(term, wild=True))
+                back_n = len(search_anki(term, field='back'))
                 if not card_ids:
                     print("No exact match")
                     card_id = None

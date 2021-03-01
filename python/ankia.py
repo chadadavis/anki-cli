@@ -156,9 +156,11 @@ def render(string, highlight=None, front=None):
     string = re.sub(r'(?m) +$', '', string)
     # Max 2x newlines in a row
     string = re.sub(r'\n{3,}', '\n\n', string)
+    # Canonical newline to end
+    string += "\n"
 
     # Wrap in [], the names of topical fields, when it's last (and not first) on the line
-    categories = 'culinair|medisch|informeel|formeel|juridisch|biologie|kunst|meteorologie|landbouw|wiskunde'
+    categories = 'culinair|medisch|informeel|formeel|juridisch|biologie|kunst|meteorologie|landbouw|wiskunde|taalkunde'
     string = re.sub(f'(?m)(?<!^)({categories})$', '[\g<1>]', string)
 
     if front:
@@ -350,8 +352,9 @@ def render_cards(card_ids, term=None):
         # This is just for paginating results
         c += 1
         if c > 0:
-            info_print(f"{c} of {len(card_ids)}")
+            print(f"{GREY}{c} of {len(card_ids)}{NOSTYLE} ", end='', flush=True)
             key = readchar.readkey()
+            print((' ' * 80) + '\r', end='', flush=True)
             if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
                 break
 
@@ -365,28 +368,24 @@ def main():
     # TODO
     # Some menu options are global (sYnc) and others act on the displayed result
 
-    # Ensure anki is running and synced:
-    # sync()
-
     term = None # term = input(f"Search: ") # Factor this into a function
     content = None
     card_id = None
     while True:
-
-        # Remind the user of any previous context
+        menu = [
+            '', '/ [S]earch', '|', 'S[y]nc', '[Q]uit', '|',
+        ]
+        # Remind the user of any previous context, and then allow to Add
         if content:
             print(render(content, highlight=term))
-
-        # TODO And add the 'Add' option to the menu contextually
-        menu = [
-            '', '/ [S]earch', '[W]ild', '[B]ack', '[F]etch', '[G]oogle', '[A]dd', 'B[r]owse', '|', 'S[y]nc', '[Q]uit', '|',
-        ]
+            menu = menu + ['[A]dd']
         if term:
+            menu = menu + ['[W]ild', '[B]ack', 'B[r]owse', '[F]etch', '[G]oogle', '|']
             menu = menu + [f"Term: [{term}]"]
         if card_id:
             menu = menu + [f"Card: [{str(card_id)}]"]
 
-        menu = ' '.join(menu + [''])
+        menu = ' '.join(menu)
         menu = re.sub(r'\[', '[' + LTYELLOW, menu)
         menu = re.sub(r'\]', NOSTYLE + ']' , menu)
 
@@ -401,6 +400,8 @@ def main():
 
             if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
                 exit()
+            elif key == '\x0c': # Ctrl-L clear screen
+                print('\033c')
             elif key == 'y':
                 sync()
             elif key == 'r': # Open Anki browser, for the sake of delete/edit/etc

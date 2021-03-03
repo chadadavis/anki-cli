@@ -4,10 +4,10 @@ import urllib.parse
 import json
 import re
 import os
+import sys
 import time
 import readline
 import readchar
-from optparse import OptionParser
 
 # TODOs
 
@@ -160,8 +160,8 @@ def render(string, highlight=None, front=None):
     string += "\n"
 
     # Wrap in [], the names of topical fields, when it's last (and not first) on the line
-    categories = 'culinair|medisch|informeel|formeel|juridisch|biologie|kunst|meteorologie|landbouw|wiskunde|taalkunde'
-    string = re.sub(f'(?m)(?<!^)({categories})$', '[\g<1>]', string)
+    categories = 'culinair|medisch|formeel|informeel|formeel|juridisch|biologie|kunst|meteorologie|landbouw|wiskunde|taalkunde'
+    string = re.sub(f'(?m)(?<!^)\\b({categories})$', '[\g<1>]', string)
 
     if front:
         # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)
@@ -399,7 +399,7 @@ def main():
 
         key = None
         while not key:
-            print(menu + '\r', end='', flush=True)
+            print('\r' + menu + '\r', end='', flush=True)
             key = readchar.readkey()
             # Clear the menu:
             # TODO detect screen width (or try curses lib)
@@ -408,6 +408,12 @@ def main():
 
             if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
                 exit()
+            elif key == '.':
+                # Reload (for 'live' editing / debugging)
+                tl = time.localtime(os.path.getmtime(sys.argv[0]))[0:6]
+                ts = "%04d-%02d-%02d %02d:%02d:%02d" % tl
+                info_print(f"pid: {os.getpid()} mtime: {ts} execv: {sys.argv[0]}")
+                os.execv(sys.argv[0], sys.argv)
             elif key == '\x0c': # Ctrl-L clear screen
                 print('\033c')
             elif key == 'y':
@@ -424,6 +430,8 @@ def main():
                 render_cards(card_ids, term)
             elif term and key == 'f':
                 content = search_woorden(term)
+                if not content:
+                    info_print("No results")
                 # Don't need to do anything else here, since it's printed next round
             elif term and key == 'g':
                 search_google(term)
@@ -446,7 +454,7 @@ def main():
                 wild_n = len(search_anki(term, wild=True))
                 back_n = len(search_anki(term, field='back'))
                 if not card_ids:
-                    print("No exact match")
+                    print(f"{LTRED}No exact match\n{NOSTYLE}")
                     card_id = None
                     content = None
                     continue

@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-import urllib.request
-import urllib.parse
 import json
-import re
 import os
+import re
+import readchar
+import readline
 import sys
 import time
-import readline
-import readchar
+import urllib.parse
+import urllib.request
 
 # TODOs
 
@@ -83,12 +83,12 @@ import readchar
 # TODO look for log4j style console logging/printing (with colors)
 
 # Color codes: https://stackoverflow.com/a/33206814/256856
-GREY     = "\033[0;02m"
-DBLUE    = "\033[0;30m"
-YELLOW   = "\033[0;33m"
-LTYELLOW = "\033[1;33m"
-LTRED    = "\033[1;31m" # the '1;' makes it bold as well
-NOSTYLE  = "\033[0;0m"
+GREY      = "\033[0;02m"
+# DBLUE    = "\033[0;30m"
+YELLOW    = "\033[0;33m"
+LT_YELLOW = "\033[1;33m"
+LT_RED    = "\033[1;31m" # the '1;' makes it bold as well
+PLAIN     = "\033[0;0m"
 # TODO save global settings like 'nl' and 'Basic-nl' externally?
 # TODO use OptionParser , but default to my settings
 
@@ -134,15 +134,19 @@ def render(string, highlight=None, front=None):
 
     # NL-specific (or specific to woorden.org)
     string = re.sub(r'Toon alle vervoegingen', '', string)
-    # Ensure headings begin on their own line
-    # TODO put these bold/colored/dimmed since they're headings? (then put them on their own line)
+    # Ensure headings begin on their own line (also covers plural forms, eg "Synoniemen")
+    # TODO Also put these bold/colored/dimmed since they're headings?
     string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', '\n\g<1>', string)
-    # Remove seperators in plurals (eg in "Verbuigingen")
-    # (note, just for display here, doesn't help with matching)
+    # Remove seperators in plurals (eg in the section: "Verbuigingen")
+    # (note, just for display here; this doesn't help with matching)
     string = re.sub(r'\|', '', string)
+
     # TODO how to match (either direction) verdwaz(en) <=> verdwaas(de)
     #      Look into stemming libraries? (Could be a useful Addon for Anki too)
     #      And one that also maps irregular verbs? liggen => gelegen ?
+
+    # TODO look into NL spellcheck libs / services (Google?)
+
     # Newlines before `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
     # (using a negative lookbehind assertion here)
@@ -160,14 +164,14 @@ def render(string, highlight=None, front=None):
     string += "\n"
 
     # Wrap in [], the names of topical fields, when it's last (and not first) on the line
-    categories = 'culinair|medisch|formeel|informeel|formeel|juridisch|biologie|kunst|meteorologie|landbouw|wiskunde|taalkunde'
+    categories = 'culinair|medisch|formeel|informeel|formeel|juridisch|biologie|kunst|meteorologie|landbouw|wiskunde|natuurkunde|taalkunde'
     string = re.sub(f'(?m)(?<!^)\\b({categories})$', '[\g<1>]', string)
 
     if front:
         # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)
         string = re.sub(f'^\s*{front}\s*', '', string)
         # And add it back canonically
-        string = YELLOW + front + NOSTYLE + '\n' + string
+        string = YELLOW + front + PLAIN + '\n' + string
 
     if highlight:
         highlight = re.sub(r'[.]', '\.', highlight)
@@ -189,7 +193,7 @@ def render(string, highlight=None, front=None):
         # Case insensitive highlighting
         # Note, the (?i:...) doesn't create a group.
         # That's why ({highlight}) needs it's own parens here.
-        string = re.sub(f"(?i:({highlight}))", f"{LTRED}\g<1>{NOSTYLE}", string)
+        string = re.sub(f"(?i:({highlight}))", f"{LT_RED}\g<1>{PLAIN}", string)
 
         # TODO Highlight accent-insensitive? (Because accents don't change the semantics in NL)
         # eg exploit should find geëxploiteerd
@@ -244,7 +248,7 @@ def info_print(*values):
     # TODO set to the whole width of the terminal?
     print('_' * 80)
     print(*values)
-    print(NOSTYLE, end='')
+    print(PLAIN, end='')
     if values:
         print()
 
@@ -325,15 +329,20 @@ def search(term):
     return card_ids
 
 
-def add_card(term, definition, deck='nl'):
+def add_card(term, definition=None, deck='nl'):
     # TODO save global settings like 'nl' and 'Basic-nl' externally?
     note = {
         'deckName': 'nl',
         'modelName': 'Basic-nl',
-        'fields': {'Front': term, 'Back': definition},
+        'fields': {'Front': term},
+        'options': {'closeAfterAdding': True},
     }
-    # Note, duplicate check (deck scope) enabled by default
-    card_id = invoke('addNote', note=note)
+    if definition:
+        note['fields']['Back'] = definition
+        # Note, duplicate check (deck scope) enabled by default
+        card_id = invoke('addNote', note=note)
+    else:
+        card_id = invoke('guiAddCards', note=note)
     return card_id
 
 
@@ -352,7 +361,7 @@ def render_cards(card_ids, term=None):
         # This is just for paginating results
         c += 1
         if c > 0:
-            print(f"{GREY}{c} of {len(card_ids)}{NOSTYLE} ", end='', flush=True)
+            print(f"{GREY}{c} of {len(card_ids)}{PLAIN} ", end='', flush=True)
             key = readchar.readkey()
             print((' ' * 80) + '\r', end='', flush=True)
             if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
@@ -380,9 +389,8 @@ def main():
         # Remind the user of any previous context, and then allow to Add
         if content:
             print(render(content, highlight=term))
-            menu += ['[A]dd']
         if term:
-            menu += ['B[r]owse', '[F]etch', '[G]oogle', '|']
+            menu += ['B[r]owse', '[F]etch', '[G]oogle', '[A]dd', '|']
             if wild_n:
                 wild = f"[W]ild [{wild_n}]"
                 menu += [wild]
@@ -394,8 +402,8 @@ def main():
             menu = menu + [f"Card: [{str(card_id)}]"]
 
         menu = ' '.join(menu)
-        menu = re.sub(r'\[', '[' + LTYELLOW, menu)
-        menu = re.sub(r'\]', NOSTYLE + ']' , menu)
+        menu = re.sub(r'\[', '[' + LT_YELLOW, menu)
+        menu = re.sub(r'\]', PLAIN + ']' , menu)
 
         key = None
         while not key:
@@ -435,7 +443,7 @@ def main():
                 # Don't need to do anything else here, since it's printed next round
             elif term and key == 'g':
                 search_google(term)
-            elif content and key == 'a':
+            elif key == 'a':
                 card_id = add_card(term, content)
                 content = None
             elif key in ('s', '/'): # Exact match search
@@ -454,7 +462,7 @@ def main():
                 wild_n = len(search_anki(term, wild=True))
                 back_n = len(search_anki(term, field='back'))
                 if not card_ids:
-                    print(f"{LTRED}No exact match\n{NOSTYLE}")
+                    print(f"{LT_RED}No exact match\n{PLAIN}")
                     card_id = None
                     content = None
                     continue

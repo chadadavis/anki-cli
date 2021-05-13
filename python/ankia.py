@@ -163,9 +163,31 @@ def render(string, highlight=None, front=None):
     # Canonical newline to end
     string += "\n"
 
-    # Wrap in [], the names of topical fields, when it's last (and not first) on the line
-    categories = 'culinair|medisch|formeel|informeel|formeel|juridisch|biologie|kunst|meteorologie|landbouw|wiskunde|natuurkunde|taalkunde'
-    string = re.sub(f'(?m)(?<!^)\\b({categories})$', '[\g<1>]', string)
+    # Wrap in '[]', the names of topical fields, when it's last (and not first) on the line
+    categories = [
+        '\S+ologie',
+        '\S+kunde',
+        'architectuur',
+        'commercie',
+        'culinair',
+        'defensie'
+        'educatie',
+        'electronica',
+        'financieel',
+        'formeel',
+        'geschiedenis',
+        'informatica',
+        'informeel',
+        'juridisch',
+        'kunst',
+        'landbouw',
+        'medisch',
+        'sport',
+        'transport',
+        'vulgair',
+    ]
+    categories_re = '|'.join(categories)
+    string = re.sub(f'(?m)(?<!^)\\s+({categories_re})$', ' [\g<1>]', string)
 
     if front:
         # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)
@@ -446,6 +468,11 @@ def main():
             elif key == 'a':
                 card_id = add_card(term, content)
                 content = None
+                # Search again, to confirm that it's added/findable
+                # (The add_card() doesn't sync immediately, so don't bother re-searching)
+                # time.sleep(5)
+                # card_ids = search_anki(term)
+                # render_cards(card_ids, term)
             elif key in ('s', '/'): # Exact match search
                 content = None
 

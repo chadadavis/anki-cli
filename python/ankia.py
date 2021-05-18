@@ -122,10 +122,58 @@ def render(string, highlight=None, front=None):
     string = re.sub(r'&[gl]t;', ' ', string)
     # Remove tags that are usually in the phonetic markup
     string = re.sub(r'\<\/?a.*?\>', '', string)
+
+    # NL-specific (or specific to woorden.org)
+    # Segregate topical category names e.g. 'informeel'
+    # Definitions in plain text cards will often have the tags already stripped out.
+    # So, also use this manually curated list.
+    categories = [
+        '\S+ologie',
+        '\S+kunde',
+        'architectuur',
+        'commercie',
+        'culinair',
+        'defensie'
+        'educatie',
+        'electronica',
+        'financieel',
+        'formeel',
+        'geschiedenis',
+        'informatica',
+        'informeel',
+        'juridisch',
+        'kunst',
+        'landbouw',
+        'medisch',
+        'sport',
+        'spreektaal',
+        'transport',
+        'vulgair',
+    ]
+
+    # If we still have the HTML tags, then we can see if this category is new to us.
+    match = re.search(r'<sup>(.*?)</sup>', string)
+    category = None
+    if match:
+        category = match.group(1)
+        # Highlight it, if it's new, so you can update the 'categories' list above.
+        # TODO find a way to save those changes back into the card definition/back.
+        if category in categories:
+            string = re.sub(r'<sup>(.*?)</sup>', '[\g<1>]', string)
+        else:
+            string = re.sub(r'<sup>(.*?)</sup>', f'[{LT_YELLOW}\g<1>{PLAIN}]', string)
+
+    # HTML-specific:
     # Replace opening tags with a newline, since usually a new section
     string = re.sub(r'\<[^/].*?\>', '\n', string)
     # Remove remaining tags
     string = re.sub(r'\<.*?\>', '', string)
+
+    # Segregate pre-defined topical category names
+    # Wrap in '[]', the names of topical fields.
+    # (when it's last (and not first) on the line)
+    categories_re = '|'.join(categories)
+    string = re.sub(f'(?m)(?<!^)\\s+({categories_re})$', ' [\g<1>]', string)
 
     # Non-HTML-specific:
     # Collapse sequences of space/tab chars
@@ -162,32 +210,6 @@ def render(string, highlight=None, front=None):
     string = re.sub(r'\n{3,}', '\n\n', string)
     # Canonical newline to end
     string += "\n"
-
-    # Wrap in '[]', the names of topical fields, when it's last (and not first) on the line
-    categories = [
-        '\S+ologie',
-        '\S+kunde',
-        'architectuur',
-        'commercie',
-        'culinair',
-        'defensie'
-        'educatie',
-        'electronica',
-        'financieel',
-        'formeel',
-        'geschiedenis',
-        'informatica',
-        'informeel',
-        'juridisch',
-        'kunst',
-        'landbouw',
-        'medisch',
-        'sport',
-        'transport',
-        'vulgair',
-    ]
-    categories_re = '|'.join(categories)
-    string = re.sub(f'(?m)(?<!^)\\s+({categories_re})$', ' [\g<1>]', string)
 
     if front:
         # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)

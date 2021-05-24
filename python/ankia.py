@@ -49,7 +49,7 @@ import urllib.request
 # And others should be permanently saved (removing junk)
 
 # Remove: 'Toon all vervoegingen'
-# Remove: tweede betekenisomschrijving 
+# Remove: tweede betekenisomschrijving
 # If the back begins with the term, delete the term (multi-word)
 
 # newline before these: '(?<=\s+)\S*(naamw|werkw|article|pronoun|...).*$'
@@ -130,6 +130,7 @@ def render(string, highlight=None, front=None):
     categories = [
         '\S+ologie',
         '\S+kunde',
+        'algemeen',
         'architectuur',
         'commercie',
         'culinair',

@@ -9,7 +9,7 @@ import time
 import urllib.parse
 import urllib.request
 
-# TODOs
+# TODO
 
 # REPL options (interactive mode)
 # # open the GUI for the current search query in browse mode (to edit/append cards)
@@ -146,6 +146,7 @@ def render(string, highlight=None, front=None):
         'kunst',
         'landbouw',
         'medisch',
+        'religie',
         'sport',
         'spreektaal',
         'transport',

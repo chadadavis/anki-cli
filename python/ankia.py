@@ -131,6 +131,7 @@ def render(string, highlight=None, front=None):
         '\S+ologie',
         '\S+kunde',
         'algemeen',
+        'anatomie',
         'architectuur',
         'commercie',
         'culinair',
@@ -147,8 +148,10 @@ def render(string, highlight=None, front=None):
         'landbouw',
         'medisch',
         'religie',
+        'speelgoed',
         'sport',
         'spreektaal',
+        'technisch',
         'transport',
         'vulgair',
     ]
@@ -227,7 +230,7 @@ def render(string, highlight=None, front=None):
 
         # NL-specific
         # Hack stemming
-        suffixes = 'ende|end|en|de|d|ste|ten|te|t|sen|zen|ze|je|es|e|\'?s'
+        suffixes = 'ende|end|en|de|d|ste|ten|te|t|sen|zen|ze|jes|je|es|e|\'?s'
         highlight = re.sub(f'({suffixes})$', '', highlight)
         highlight = f"(ge)?{highlight}({suffixes})?"
 

@@ -114,7 +114,7 @@ def invoke(action, **params):
     return response['result']
 
 
-def render(string, highlight=None, front=None):
+def render(string, *, highlight=None, front=None):
     # TODO render HTML another way? eg as Markdown instead?
 
     # HTML-specific:
@@ -258,7 +258,7 @@ def render(string, highlight=None, front=None):
     return string
 
 
-def search_anki(term, deck='nl', wild=False, field='front', browse=False):
+def search_anki(term, *, deck='nl', wild=False, field='front', browse=False):
     # TODO save global settings like 'nl' and 'Basic-nl' externally?
 
     # If term contains whitespace, either must quote the whole thing, or replace spaces:
@@ -312,7 +312,7 @@ def search_google(term):
     os.system(cmd)
 
 
-def search_woorden(term, url='http://www.woorden.org/woord/'):
+def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     """The term will be appended to the url"""
     # TODO generalize this for other online dictionaries?
     # eg parameterize base_url (with a %s substitute, and the regex ?)
@@ -351,7 +351,7 @@ def get_card(id):
 
 
 # TODO this should return a string, rather than print
-def render_card(card, term=None):
+def render_card(card, *, term=None):
     # TODO when front contains HTML, warn, dump it, and clean it and show diff
     # Auto replace, and use the updateNoteFields API? (after prompting)
     # https://github.com/FooSoft/anki-connect/blob/master/actions/notes.md
@@ -380,7 +380,7 @@ def search(term):
     return card_ids
 
 
-def add_card(term, definition=None, deck='nl'):
+def add_card(term, definition=None, *, deck='nl'):
     # TODO save global settings like 'nl' and 'Basic-nl' externally?
     note = {
         'deckName': 'nl',
@@ -406,7 +406,7 @@ def sync():
         time.sleep(5)
         invoke('sync')
 
-def render_cards(card_ids, term=None):
+def render_cards(card_ids, *, term=None):
     c = -1
     for card_id in card_ids:
         # This is just for paginating results
@@ -420,7 +420,7 @@ def render_cards(card_ids, term=None):
 
         card = get_card(card_id)
         # TODO render_card should return a string
-        render_card(card, term)
+        render_card(card, term=term)
 
 
 def main():
@@ -482,11 +482,11 @@ def main():
             elif wild_n and key == 'w': # Search front with wildcard, or just search for *term*
                 card_ids = search_anki(term, wild=True)
                 # TODO report if no results?
-                render_cards(card_ids, term)
+                render_cards(card_ids, term=term)
             elif back_n and key == 'b': # Search back (implies wildcard matching)
                 card_ids = search_anki(term, field='back')
                 # TODO report if no results?
-                render_cards(card_ids, term)
+                render_cards(card_ids, term=term)
             elif term and key == 'f':
                 content = search_woorden(term)
                 if not content:
@@ -501,7 +501,7 @@ def main():
                 # (The add_card() doesn't sync immediately, so don't bother re-searching)
                 # time.sleep(5)
                 # card_ids = search_anki(term)
-                # render_cards(card_ids, term)
+                # render_cards(card_ids, term=term)
             elif key in ('s', '/'): # Exact match search
                 content = None
 
@@ -531,7 +531,7 @@ def main():
                 # card = get_card(card_id)
                 # TODO make render_card just return the rendered definition as string,
                 # save in 'content', let it print on next iteration
-                render_cards(card_ids, term)
+                render_cards(card_ids, term=term)
             else:
                 # Unrecognized command. Beep.
                 print("\a", end='', flush=True)

@@ -128,32 +128,34 @@ def render(string, highlight=None, front=None):
     # Definitions in plain text cards will often have the tags already stripped out.
     # So, also use this manually curated list.
     categories = [
-        '\S+ologie',
-        '\S+kunde',
-        'algemeen',
-        'anatomie',
-        'architectuur',
-        'commercie',
-        'culinair',
-        'defensie'
-        'educatie',
-        'electronica',
-        'financieel',
-        'formeel',
-        'geschiedenis',
-        'informatica',
-        'informeel',
-        'juridisch',
-        'kunst',
-        'landbouw',
-        'medisch',
-        'religie',
-        'speelgoed',
-        'sport',
-        'spreektaal',
-        'technisch',
-        'transport',
-        'vulgair',
+        *[]
+        ,'\S+ologie'
+        ,'\S+kunde'
+        ,'algemeen'
+        ,'anatomie'
+        ,'architectuur'
+        ,'commercie'
+        ,'culinair'
+        ,'defensie'
+        ,'educatie'
+        ,'electronica'
+        ,'financieel'
+        ,'formeel'
+        ,'geschiedenis'
+        ,'informatica'
+        ,'informeel'
+        ,'juridisch'
+        ,'kunst'
+        ,'landbouw'
+        ,'medisch'
+        ,'ouderwets'
+        ,'religie'
+        ,'speelgoed'
+        ,'sport'
+        ,'spreektaal'
+        ,'technisch'
+        ,'transport'
+        ,'vulgair'
     ]
 
     # If we still have the HTML tags, then we can see if this category is new to us.

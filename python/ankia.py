@@ -360,7 +360,7 @@ def search_thefreedictionary(term, *, lang):
     info_print(f"Fetching: {url}")
     content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
     # TODO extract smarter. Check DOM parsing libs
-    match = re.search('<section data-src="pons">.*?<\/section>', content)
+    match = re.search('<div id="Definition"><section .*?>.*?<\/section>', content)
     if not match:
         return
     definition = match.group()

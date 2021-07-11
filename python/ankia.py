@@ -1,9 +1,10 @@
 #!/usr/bin/env python
+from optparse import OptionParser
 import json
 import os
 import re
 import readchar
-import readline
+import readline # Not referenced, but used by input()
 import sys
 import time
 import urllib.parse
@@ -20,8 +21,6 @@ import urllib.request
 # Lookup defs of fields, or just compare to what's displayed in card browser for an example card
 
 # Anki Add: figure out how to package deps (eg readchar) and test it again after removing local install of readchar
-
-# TODO add a provider for Encylo ? either parse it or open in browser?
 
 # TODO make a CLI/REPL option to delete (or edit?) a card (by ID), for debugging
 # That could just be part of the REPL after rendering a (set of?) card
@@ -40,7 +39,6 @@ import urllib.request
 # Or just a simple queue in the CLI, that stays pending, keep printing it out
 # ie just an option to defer adding a definition until later (in the run)
 # That would be for when woorden.nl has no results, for example.
-
 
 # Is this even worth it? What's the value?
 # Cleanup (does this only apply to the ones that aren't already HTML?)
@@ -84,13 +82,10 @@ import urllib.request
 
 # Color codes: https://stackoverflow.com/a/33206814/256856
 GREY      = "\033[0;02m"
-# DBLUE    = "\033[0;30m"
 YELLOW    = "\033[0;33m"
 LT_YELLOW = "\033[1;33m"
 LT_RED    = "\033[1;31m" # the '1;' makes it bold as well
 PLAIN     = "\033[0;0m"
-# TODO save global settings like 'nl' and 'Basic-nl' externally?
-# TODO use OptionParser , but default to my settings
 
 def request(action, **params):
     """Send a request to Anki desktop via anki_connect HTTP server addon
@@ -115,11 +110,16 @@ def invoke(action, **params):
 
 
 def render(string, *, highlight=None, front=None):
+    # This is just makes the HTML string easier to read on the terminal console
+    # This changes are not saved in the cards
+
     # TODO render HTML another way? eg as Markdown instead?
 
     # HTML-specific:
     string = re.sub(r'&nbsp;', ' ', string)
     string = re.sub(r'&[gl]t;', ' ', string)
+    string = re.sub(r'&quot;', '\'', string)
+
     # Remove tags that are usually in the phonetic markup
     string = re.sub(r'\<\/?a.*?\>', '', string)
 
@@ -135,6 +135,7 @@ def render(string, *, highlight=None, front=None):
         ,'anatomie'
         ,'architectuur'
         ,'commercie'
+        ,'constructie'
         ,'culinair'
         ,'defensie'
         ,'educatie'
@@ -202,21 +203,31 @@ def render(string, *, highlight=None, front=None):
 
     # TODO look into NL spellcheck libs / services (Google?)
 
-    # Newlines before `phrases in backticks`
+    # NL-specific: Newlines before example `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
     # (using a negative lookbehind assertion here)
     string = re.sub(r'(?<!\n)(`.*?`)', '\n\g<1>', string)
 
+    # Max 2x newlines in a row
+    string = re.sub(r'\n{3,}', '\n\n', string)
+
+    # Delete leading/trailing space per line
+    string = re.sub(r'(?m)^ +', '', string)
+    string = re.sub(r'(?m) +$', '', string)
+
+    # DE-specific: Newlines before each definition on the card, marked by eg: 2.
+    # string = re.sub(r';?\s*(\d+\.)', '\n\n\g<1>', string)
+    # And sub-definitions, marked by eg: b)
+    string = re.sub(r';?\s+([a-z]\)\s+)', '\n  \g<1>', string)
+    # Split sub-sub-definitions onto newlines
+    # TODO: BUG: this breaks text in nl deck like '... [meteorologie]' for some reason
+    # string = re.sub(r'\s*\;\s*', '\n     ', string)
+
     # Delete leading/trailing space on the entry as a whole
     string = re.sub(r'^\s+', '', string)
     string = re.sub(r'\s+$', '', string)
-    # And leading/trailing space per line
-    string = re.sub(r'(?m)^ +', '', string)
-    string = re.sub(r'(?m) +$', '', string)
-    # Max 2x newlines in a row
-    string = re.sub(r'\n{3,}', '\n\n', string)
-    # Canonical newline to end
-    string += "\n"
+    # Canonical newline to start/end
+    string = "\n" + string + "\n"
 
     if front:
         # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)
@@ -232,7 +243,7 @@ def render(string, *, highlight=None, front=None):
 
         # NL-specific
         # Hack stemming
-        suffixes = 'ende|end|en|de|d|ste|ten|te|t|sen|zen|ze|jes|je|es|e|\'?s'
+        suffixes = 'ende|end|en|de|d|ste|st|ten|te|t|sen|zen|ze|jes|je|es|e|\'?s'
         highlight = re.sub(f'({suffixes})$', '', highlight)
         highlight = f"(ge)?{highlight}({suffixes})?"
 
@@ -258,14 +269,13 @@ def render(string, *, highlight=None, front=None):
     return string
 
 
-def search_anki(term, *, deck='nl', wild=False, field='front', browse=False):
-    # TODO save global settings like 'nl' and 'Basic-nl' externally?
+def search_anki(term, *, deck, wild=False, field='front', browse=False):
 
     # If term contains whitespace, either must quote the whole thing, or replace spaces:
     search_term = re.sub(r' ', '_', term) # For Anki searches
 
     # Collapse double letters into a disjunction, eg: (NL-specific)
-    # This implies that the user should, when in doubt, use doubble chars in the querry
+    # This implies that the user should, when in doubt, use double chars in the query
     # deck:nl (front:dooen OR front:doen)
     # or use a re: (but that doesn't seem to work)
     # TODO BUG: this isn't a proper Combination (maths), so it misses some cases
@@ -344,6 +354,28 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     return definition
 
 
+def search_thefreedictionary(term, *, lang):
+    query_term = urllib.parse.quote(term) # For web searches
+    url = f'https://{lang}.thefreedictionary.com/{query_term}'
+    info_print(f"Fetching: {url}")
+    content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
+    # TODO extract smarter. Check DOM parsing libs
+    match = re.search('<section data-src="pons">.*?<\/section>', content)
+    if not match:
+        return
+    definition = match.group()
+    definition = re.sub('<div class="cprh">.*?</div>', '', definition)
+
+    # Get pronunciation via Kerneman (multiple languages), and prepend it
+    match = re.search(' class="pron">(.*?)</span>', content)
+    if match:
+        definition = f"[{match.group(1)}]\n{definition}"
+    else:
+        info_print("No pron(unciation)")
+
+    return definition
+
+
 def get_card(id):
     cardsInfo = invoke('cardsInfo', cards=[id])
     card = cardsInfo[0]
@@ -366,7 +398,7 @@ def render_card(card, *, term=None):
 
 
 # TODO deprecate
-def search(term):
+def search(term, *, deck):
     # TODO trim whitespace
     # Search Anki: exact, then wildcard (front), then the back
     try:
@@ -374,17 +406,17 @@ def search(term):
             term = input("\nSearch: ")
     except:
         return
-    card_ids = search_anki(term)
-    card_ids = card_ids or search_anki(term, wild=True)
-    card_ids = card_ids or search_anki(term, field='back')
+    card_ids = search_anki(term, deck=deck)
+    card_ids = card_ids or search_anki(term, deck=deck, wild=True)
+    card_ids = card_ids or search_anki(term, deck=deck, field='back')
     return card_ids
 
 
-def add_card(term, definition=None, *, deck='nl'):
-    # TODO save global settings like 'nl' and 'Basic-nl' externally?
+def add_card(term, definition=None, *, deck):
+
     note = {
-        'deckName': 'nl',
-        'modelName': 'Basic-nl',
+        'deckName': deck,
+        'modelName': 'Basic-' + deck,
         'fields': {'Front': term},
         'options': {'closeAfterAdding': True},
     }
@@ -423,7 +455,7 @@ def render_cards(card_ids, *, term=None):
         render_card(card, term=term)
 
 
-def main():
+def main(deck):
 
     # TODO
     # Some menu options are global (sYnc) and others act on the displayed result
@@ -435,7 +467,7 @@ def main():
     back_n = None
     while True:
         menu = [
-            '', '/ [S]earch', '|', 'S[y]nc', '[Q]uit', '|',
+            '', deck.upper(), '/ [S]earch', '|', 'S[y]nc', '[Q]uit', '|',
         ]
         # Remind the user of any previous context, and then allow to Add
         if content:
@@ -478,24 +510,27 @@ def main():
             elif key == 'y':
                 sync()
             elif term and key == 'r': # Open Anki browser, for the sake of delete/edit/etc
-                search_anki(term, browse=True)
+                search_anki(term, deck=deck, browse=True)
             elif wild_n and key == 'w': # Search front with wildcard, or just search for *term*
-                card_ids = search_anki(term, wild=True)
+                card_ids = search_anki(term, deck=deck, wild=True)
                 # TODO report if no results?
                 render_cards(card_ids, term=term)
             elif back_n and key == 'b': # Search back (implies wildcard matching)
-                card_ids = search_anki(term, field='back')
+                card_ids = search_anki(term, deck=deck, field='back')
                 # TODO report if no results?
                 render_cards(card_ids, term=term)
             elif term and key == 'f':
-                content = search_woorden(term)
+                if deck == 'nl':
+                    content = search_woorden(term)
+                else:
+                    content = search_thefreedictionary(term, lang=deck)
                 if not content:
                     info_print("No results")
                 # Don't need to do anything else here, since it's printed next round
             elif term and key == 'g':
                 search_google(term)
             elif key == 'a':
-                card_id = add_card(term, content)
+                card_id = add_card(term, content, deck=deck)
                 content = None
                 # Search again, to confirm that it's added/findable
                 # (The add_card() doesn't sync immediately, so don't bother re-searching)
@@ -511,12 +546,12 @@ def main():
                     term = input(f"Search: ")
                 except:
                     continue # TODO why is this necessary to ignore exceptions?
-                card_ids = search_anki(term)
+                card_ids = search_anki(term, deck=deck)
                 # Check other possible query types:
                 # TODO do all the searches (by try to minimise exact and wildcard into one request)
                 # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
-                wild_n = len(search_anki(term, wild=True))
-                back_n = len(search_anki(term, field='back'))
+                wild_n = len(search_anki(term, deck=deck, wild=True))
+                back_n = len(search_anki(term, deck=deck, field='back'))
                 if not card_ids:
                     print(f"{LT_RED}No exact match\n{PLAIN}")
                     card_id = None
@@ -540,5 +575,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-
+    parser = OptionParser()
+    parser.add_option("-d", "--deck", dest="deck",
+        help="Name of Anki deck to use (a 2-letter language code, e.g. 'nl')"
+        )
+    (options, args) = parser.parse_args()
+    if not options.deck:
+        parser.print_help()
+        exit(1)
+    main(options.deck)

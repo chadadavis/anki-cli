@@ -358,7 +358,11 @@ def search_thefreedictionary(term, *, lang):
     query_term = urllib.parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
     info_print(f"Fetching: {url}")
-    content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
+    try:
+        content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
+    except Exception as e:
+        info_print(e)
+        return
     # TODO extract smarter. Check DOM parsing libs
     match = re.search('<div id="Definition"><section .*?>.*?<\/section>', content)
     if not match:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from optparse import OptionParser
+import html
 import json
 import os
 import re
@@ -114,11 +115,8 @@ def render(string, *, highlight=None, front=None):
     # This changes are not saved in the cards
 
     # TODO render HTML another way? eg as Markdown instead?
-
-    # HTML-specific:
-    string = re.sub(r'&nbsp;', ' ', string)
-    string = re.sub(r'&[gl]t;', ' ', string)
-    string = re.sub(r'&quot;', '\'', string)
+    # At least replace HTML entities with unicode chars (for IPA symbols, etc)
+    string = html.unescape(string)
 
     # Remove tags that are usually in the phonetic markup
     string = re.sub(r'\<\/?a.*?\>', '', string)
@@ -370,7 +368,7 @@ def search_thefreedictionary(term, *, lang):
     definition = match.group()
     definition = re.sub('<div class="cprh">.*?</div>', '', definition)
 
-    # Get pronunciation via Kerneman (multiple languages), and prepend it
+    # Get pronunciation via Kerneman/Collins (multiple languages), and prepend it
     match = re.search(' class="pron">(.*?)</span>', content)
     if match:
         definition = f"[{match.group(1)}]\n{definition}"

@@ -11,74 +11,35 @@ import time
 import urllib.parse
 import urllib.request
 
-# TODO
+# TODO Backlog
 
 # REPL options (interactive mode)
-# # open the GUI for the current search query in browse mode (to edit/append cards)
-# # https://github.com/FooSoft/anki-connect/blob/master/actions/graphical.md
 #
 # when checking for an existing word, print stats on age (use case: "why don't I remember this one? still new?")
 # See cardInfo response fields: interval, due, reps, lapses, left, (ord? , type?)
 # Lookup defs of fields, or just compare to what's displayed in card browser for an example card
 
-# Anki Add: figure out how to package deps (eg readchar) and test it again after removing local install of readchar
+# repo/Packaging figure out how to package deps (eg readchar) and test it again after removing local install of readchar
 
-# TODO make a CLI/REPL option to delete (or edit?) a card (by ID), for debugging
-# That could just be part of the REPL after rendering a (set of?) card
+# TODO make a CLI/REPL option to delete the current card (by ID)
 
-# Have a REPL option to 'f'etch the card I'm viewing, if it exists locally, show them for comparison
-# Have a REPL option to 'r'eplace the local card with the fetched.
+# Search for Wild by default if no exact match?
 
-# REPL: option to open [G]oogle if no results found in online dictionary
-# And then open GUI dialog to add a new card?
-
-# Don't search 'B'ack by default, but make it a REPL option.
-# Search for 'W'ild by default if no exact match?
-# For both: Pipe it into $PAGER by default
-
-# Send to RTM as a fallback, when I need more research? (better as a separate thing, don't integrate it)
-# Or just a simple queue in the CLI, that stays pending, keep printing it out
-# ie just an option to defer adding a definition until later (in the run)
-# That would be for when woorden.nl has no results, for example.
-
-# Is this even worth it? What's the value?
-# Cleanup (does this only apply to the ones that aren't already HTML?)
-
-# Also note that some of these cleanups are only for display (rendering HTML)
-# And others should be permanently saved (removing junk)
-
-# Remove: 'Toon all vervoegingen'
-# Remove: tweede betekenisomschrijving
-# If the back begins with the term, delete the term (multi-word)
-
-# newline before these: '(?<=\s+)\S*(naamw|werkw|article|pronoun|...).*$'
-# Lookup how to match to end of newline eg: '?m:(?<=\s+)\S*(naamw|werkw|article|pronoun|woord|...).*$'
-# And also insert a newline before/after, to ease readability?
-
-# Numbered section on its' own line? '?m:^([0-9]+)\)\s*'
-# And all `text wrapped in backticks as quotes` should be on it's own line
-# Also, remove/replace tab chars '	' (ever needed?)
-
+# When adding, use some kind of sentinel marker to note which cards are not yet defined
+# And determine a query that's easy to remember, or built in, for fetching the cards to be defined.
+# Stop using RTM.
 
 # Bug: I cannot search for uitlaatgassen , since the card only contains: Verbuigingen: uitlaatgas|sen (split)
 # Remove those too? But only when it's in 'Verbuigingen: ...' (check that it's on the same line)
 
-# If I prompt with a diff, then I don't need to be so careful, just prompt to remove all of them, show diff
-
-# Anki add: when populating readline with seen cards, the front field should be stripped of HTML, like the render function does already
+# Anki add: when populating readline with seen cards, the front field should be stripped of HTML,
+# like the render function does already
 # search for front:*style* to find cards w html on the front to clean (but then how to strip them ?)
 
-# When cleaning, having a dry-mode to show what would change before saving
-# Show a diff, so that I can see what chars changed where
-# Warn before any mass changes to first do an export (via API?) See .config/backups/
+# Anki Add, also parse out the spellcheck suggestions on the fetched page (test: hoiberg) 
+# and enable them to be fetched by eg assigning them numbers (single key press?)
+# Consider adding these to autocomplete when searching? Or at least after failed search
 
-# Anki Add, also parse out the spellcheck suggestions on the fetched page (test: hoiberg) and enable them to be fetched by eg assigning them numbers (single key press?)
-
-# Anki add: pipe each display through less/PAGER --quit-if-one-screen
-# https://stackoverflow.com/a/39587824/256856
-# https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
-
-# TODO at least refactor into functions by intent (print_info vs print_diff etc)
 # TODO look for log4j style console logging/printing (with colors)
 
 # Color codes: https://stackoverflow.com/a/33206814/256856
@@ -113,7 +74,6 @@ def invoke(action, **params):
 def render(string, *, highlight=None, front=None):
     # This is just makes the HTML string easier to read on the terminal console
     # This changes are not saved in the cards
-
     # TODO render HTML another way? eg as Markdown instead?
     # At least replace HTML entities with unicode chars (for IPA symbols, etc)
     string = html.unescape(string)
@@ -125,10 +85,11 @@ def render(string, *, highlight=None, front=None):
     # Segregate topical category names e.g. 'informeel'
     # Definitions in plain text cards will often have the tags already stripped out.
     # So, also use this manually curated list.
+    # spell-checker:disable
     categories = [
         *[]
-        ,'\S+ologie'
         ,'\S+kunde'
+        ,'\S+ologie'
         ,'algemeen'
         ,'anatomie'
         ,'architectuur'
@@ -156,8 +117,11 @@ def render(string, *, highlight=None, front=None):
         ,'transport'
         ,'vulgair'
     ]
+    # spell-checker:enable
 
-    # If we still have the HTML tags, then we can see if this category is new to us.
+    # If we still have the HTML tags, then we can see if this topic category is new to us.
+    # Optionally, it can then be manually added to the list above.
+    # Otherwise, they wouldn't be detected in old cards, if it's not already in [brackets]
     match = re.search(r'<sup>(.*?)</sup>', string)
     category = None
     if match:
@@ -170,11 +134,15 @@ def render(string, *, highlight=None, front=None):
             string = re.sub(r'<sup>(.*?)</sup>', f'[{LT_YELLOW}\g<1>{PLAIN}]', string)
 
     # HTML-specific:
+    # Remove span tags, so that the text can stay on one line
+    string = re.sub('<[ib]\/?>', '', string)
+    string = re.sub('<span.*?>', '', string)
+    string = re.sub('<\/span>', '', string)
+    info_print(string)
     # Replace opening tags with a newline, since usually a new section
     string = re.sub(r'\<[^/].*?\>', '\n', string)
     # Remove remaining tags
     string = re.sub(r'\<.*?\>', '', string)
-
     # Segregate pre-defined topical category names
     # Wrap in '[]', the names of topical fields.
     # (when it's last (and not first) on the line)
@@ -214,7 +182,7 @@ def render(string, *, highlight=None, front=None):
     string = re.sub(r'(?m) +$', '', string)
 
     # DE-specific: Newlines before each definition on the card, marked by eg: 2.
-    # string = re.sub(r';?\s*(\d+\.)', '\n\n\g<1>', string)
+    string = re.sub(r';?\s*(\d+\.)', '\n\n\g<1>', string)
     # And sub-definitions, marked by eg: b)
     string = re.sub(r';?\s+([a-z]\)\s+)', '\n  \g<1>', string)
     # Split sub-sub-definitions onto newlines
@@ -260,7 +228,7 @@ def render(string, *, highlight=None, front=None):
         # It should be possible with non-combining mode: nc:geëxploiteerd but doesn't seem to work
         # https://docs.ankiweb.net/#/searching
         # Probably need to:
-        # Apply search to a unidecode'd copy.
+        # Apply search to a unidecoded copy.
         # Then record all the patch positions, as [start,end) pairs,
         # then, in reverse order (to preserve position numbers), wrap formatting markup around matches
 
@@ -366,14 +334,16 @@ def search_thefreedictionary(term, *, lang):
     if not match:
         return
     definition = match.group()
+
+    # Remove citations, just to keep Anki cards terse
     definition = re.sub('<div class="cprh">.*?</div>', '', definition)
 
-    # Get pronunciation via Kerneman/Collins (multiple languages), and prepend it
+    # Get pronunciation (the IPA version) via Kerneman/Collins (multiple languages), and prepend it
     match = re.search(' class="pron">(.*?)</span>', content)
     if match:
-        definition = f"[{match.group(1)}]\n{definition}"
+        definition = "\n".join([match.group(1), definition])
     else:
-        info_print("No pron(unciation)")
+        info_print("No pronunciation")
 
     return definition
 
@@ -469,13 +439,22 @@ def main(deck):
     back_n = None
     while True:
         menu = [
+            # spell-checker:disable
             '', deck.upper(), '/ [S]earch', '|', 'S[y]nc', '[Q]uit', '|',
+            # spell-checker:enable
         ]
+        # TODO
+        # pipe each display through less/PAGER --quit-if-one-screen
+        # https://stackoverflow.com/a/39587824/256856
+        # https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
+
         # Remind the user of any previous context, and then allow to Add
         if content:
             print(render(content, highlight=term))
         if term:
+            # spell-checker:disable
             menu += ['B[r]owse', '[F]etch', '[G]oogle', '[A]dd', '|']
+            # spell-checker:enable
             if wild_n:
                 wild = f"[W]ild [{wild_n}]"
                 menu += [wild]

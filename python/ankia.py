@@ -138,7 +138,6 @@ def render(string, *, highlight=None, front=None):
     string = re.sub('<[ib]\/?>', '', string)
     string = re.sub('<span.*?>', '', string)
     string = re.sub('<\/span>', '', string)
-    info_print(string)
     # Replace opening tags with a newline, since usually a new section
     string = re.sub(r'\<[^/].*?\>', '\n', string)
     # Remove remaining tags
@@ -273,7 +272,7 @@ def info_print(*values):
     # TODO Use colorama
     print(GREY, end='')
     # TODO set to the whole width of the terminal?
-    print('_' * 80)
+    print('_' * 160)
     print(*values)
     print(PLAIN, end='')
     if values:
@@ -453,7 +452,7 @@ def main(deck):
             print(render(content, highlight=term))
         if term:
             # spell-checker:disable
-            menu += ['B[r]owse', '[F]etch', '[G]oogle', '[A]dd', '|']
+            menu += ['B[r]owse', '[F]etch', '[G]oogle', '|']
             # spell-checker:enable
             if wild_n:
                 wild = f"[W]ild [{wild_n}]"
@@ -461,9 +460,11 @@ def main(deck):
             if back_n:
                 back = f"[B]ack [{back_n}]"
                 menu += [back]
-            menu = menu + [f"Term: [{term}]"]
-        if card_id:
-            menu = menu + [f"Card: [{str(card_id)}]"]
+            if card_id:
+                menu = menu + ['|', f"Card: [{str(card_id)}]"]
+            else:
+                menu = menu + ['|', f"Card: [A]dd"]
+            menu = menu + ['|', f"Term: [{term}]"]
 
         menu = ' '.join(menu)
         menu = re.sub(r'\[', '[' + LT_YELLOW, menu)
@@ -475,7 +476,6 @@ def main(deck):
             key = readchar.readkey()
             # Clear the menu:
             # TODO detect screen width (or try curses lib)
-            # print('\r' + (' ' * 80) + '\r', end='', flush='True')
             print('\r' + (' ' * 160) + '\r', end='', flush='True')
 
             if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
@@ -510,7 +510,7 @@ def main(deck):
                 # Don't need to do anything else here, since it's printed next round
             elif term and key == 'g':
                 search_google(term)
-            elif key == 'a':
+            elif not card_id and key == 'a':
                 card_id = add_card(term, content, deck=deck)
                 content = None
                 # Search again, to confirm that it's added/findable

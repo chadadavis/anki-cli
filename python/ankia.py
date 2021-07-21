@@ -49,26 +49,40 @@ LT_YELLOW = "\033[1;33m"
 LT_RED    = "\033[1;31m" # the '1;' makes it bold as well
 PLAIN     = "\033[0;0m"
 
+LINE_WIDTH = 120
+
+def launch_anki():
+    """Launch anki (in the background) if not already running.
+    """
+    info_print('Launching anki ...')
+    # os.system('ss anki >/dev/null 2>&1 &')
+    os.system('anki >/dev/null &')
+    # And try to minimize it, after giving it a couple seconds to launch:
+    os.system('(sleep 2; xdotool search --class "Anki" windowminimize) &')
+
+
 def request(action, **params):
     """Send a request to Anki desktop via anki_connect HTTP server addon
 
     https://foosoft.net/projects/anki-connect/
+    https://github.com/FooSoft/anki-connect/
     """
     return {'action': action, 'params': params, 'version': 6}
-
-
-def launch_anki():
-    info_print('Launching anki ...')
-    os.system('anki >/dev/null 2>&1 &')
 
 
 def invoke(action, **params):
     reqJson = json.dumps(request(action, **params)).encode('utf-8')
     req = urllib.request.Request('http://localhost:8765', reqJson)
+    # TODO catch urllib.error.URLError and try to launch_anki() , but only once, else just 'raise' (re-raises prev Error)
     response = json.load(urllib.request.urlopen(req))
     if response['error'] is not None:
         raise Exception(response['error'])
     return response['result']
+
+
+def get_deck_names():
+    names = sorted(invoke('deckNames'))
+    return names
 
 
 def render(string, *, highlight=None, front=None):
@@ -132,6 +146,9 @@ def render(string, *, highlight=None, front=None):
             string = re.sub(r'<sup>(.*?)</sup>', '[\g<1>]', string)
         else:
             string = re.sub(r'<sup>(.*?)</sup>', f'[{LT_YELLOW}\g<1>{PLAIN}]', string)
+
+    # Specific to: PONS Großwörterbuch Deutsch als Fremdsprache
+    string = re.sub('<span class="illustration">', '\n', string)
 
     # HTML-specific:
     # Remove span tags, so that the text can stay on one line
@@ -272,7 +289,7 @@ def info_print(*values):
     # TODO Use colorama
     print(GREY, end='')
     # TODO set to the whole width of the terminal?
-    print('_' * 160)
+    print('_' * LINE_WIDTH)
     print(*values)
     print(PLAIN, end='')
     if values:
@@ -357,7 +374,7 @@ def get_card(id):
 def render_card(card, *, term=None):
     # TODO when front contains HTML, warn, dump it, and clean it and show diff
     # Auto replace, and use the updateNoteFields API? (after prompting)
-    # https://github.com/FooSoft/anki-connect/blob/master/actions/notes.md
+    # https://github.com/FooSoft/anki-connect/
 
     info_print()
     f = card['fields']['Front']['value']
@@ -426,6 +443,11 @@ def render_cards(card_ids, *, term=None):
         render_card(card, term=term)
 
 
+def clear_line():
+    # TODO detect screen width (or try curses lib)
+    print('\r' + (' ' * LINE_WIDTH) + '\r', end='', flush='True')
+
+
 def main(deck):
 
     # TODO
@@ -439,7 +461,7 @@ def main(deck):
     while True:
         menu = [
             # spell-checker:disable
-            '', deck.upper(), '/ [S]earch', '|', 'S[y]nc', '[Q]uit', '|',
+            '', deck.upper(), '/ [S]earch', '|', 'Dec[k]', 'S[y]nc', '[Q]uit', '|',
             # spell-checker:enable
         ]
         # TODO
@@ -454,6 +476,9 @@ def main(deck):
             # spell-checker:disable
             menu += ['B[r]owse', '[F]etch', '[G]oogle', '|']
             # spell-checker:enable
+
+            # TODO make these menu entries fixed width with sprintf patterns
+            # Card ID is eg 13 or so chars: 1626707360838
             if wild_n:
                 wild = f"[W]ild [{wild_n}]"
                 menu += [wild]
@@ -475,8 +500,7 @@ def main(deck):
             print('\r' + menu + '\r', end='', flush=True)
             key = readchar.readkey()
             # Clear the menu:
-            # TODO detect screen width (or try curses lib)
-            print('\r' + (' ' * 160) + '\r', end='', flush='True')
+            clear_line()
 
             if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
                 exit()
@@ -488,6 +512,16 @@ def main(deck):
                 os.execv(sys.argv[0], sys.argv)
             elif key == '\x0c': # Ctrl-L clear screen
                 print('\033c')
+            elif key == 'k':
+                deck = None
+                while not deck:
+                    decks = get_deck_names()
+                    try:
+                        deck = input(f"Deck name {decks}: ")
+                        if not deck in decks:
+                            deck = None
+                    except:
+                        clear_line()
             elif key == 'y':
                 sync()
             elif term and key == 'r': # Open Anki browser, for the sake of delete/edit/etc
@@ -556,12 +590,14 @@ def main(deck):
 
 
 if __name__ == "__main__":
+    launch_anki()
+    decks = get_deck_names()
     parser = OptionParser()
     parser.add_option("-d", "--deck", dest="deck",
-        help="Name of Anki deck to use (a 2-letter language code, e.g. 'nl')"
+        help="Name of Anki deck to use (must be a 2-letter language code, e.g. 'de')"
         )
     (options, args) = parser.parse_args()
     if not options.deck:
-        parser.print_help()
-        exit(1)
+        # Take the first deck by default; fail if there are none
+        options.deck = decks[0]
     main(options.deck)

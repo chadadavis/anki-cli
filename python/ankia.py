@@ -49,23 +49,29 @@ LT_YELLOW = "\033[1;33m"
 LT_RED    = "\033[1;31m" # the '1;' makes it bold as well
 PLAIN     = "\033[0;0m"
 
-LINE_WIDTH = 120
+# TODO set to the whole width of the terminal?
+LINE_WIDTH = 140
+
+# NB, because the sync operation opens new windows, the window list keeps growing
+MINIMIZER = 'for w in `xdotool search --classname "Anki"`; do xdotool windowminimize --sync $w; done'
 
 def launch_anki():
     """Launch anki (in the background) if not already running.
     """
     info_print('Launching anki ...')
-    # os.system('ss anki >/dev/null 2>&1 &')
-    os.system('anki >/dev/null &')
     # And try to minimize it, after giving it a couple seconds to launch:
-    os.system('(sleep 2; xdotool search --class "Anki" windowminimize) &')
+    # TODO the sleep 2 at the start seems needed because MINIMIZER succeeds because the app is running, but it hasn't finished creating the window yet?
+    # Or check the window class / name via some tool for getting the window ID / settings
+    # Better to have a separate function to test if it's already running, like get_deck_names()
+    # And only if that fails, then launch (and minimize)
+    os.system(f'anki >/dev/null & for i in 1 2 3 4 5; do sleep 2; if {MINIMIZER}; then break; else echo Waiting ... $i; sleep 1; fi; done')
 
 
 def request(action, **params):
     """Send a request to Anki desktop via anki_connect HTTP server addon
 
-    https://foosoft.net/projects/anki-connect/
     https://github.com/FooSoft/anki-connect/
+    https://foosoft.net/projects/anki-connect/
     """
     return {'action': action, 'params': params, 'version': 6}
 
@@ -73,7 +79,9 @@ def request(action, **params):
 def invoke(action, **params):
     reqJson = json.dumps(request(action, **params)).encode('utf-8')
     req = urllib.request.Request('http://localhost:8765', reqJson)
-    # TODO catch urllib.error.URLError and try to launch_anki() , but only once, else just 'raise' (re-raises prev Error)
+
+    # TODO try / except here and then consider auto-launching anki?
+
     response = json.load(urllib.request.urlopen(req))
     if response['error'] is not None:
         raise Exception(response['error'])
@@ -140,8 +148,7 @@ def render(string, *, highlight=None, front=None):
     category = None
     if match:
         category = match.group(1)
-        # Highlight it, if it's new, so you can update the 'categories' list above.
-        # TODO find a way to save those changes back into the card definition/back.
+        # Highlight it, if it's new, so you can (manually) update the 'categories' list above.
         if category in categories:
             string = re.sub(r'<sup>(.*?)</sup>', '[\g<1>]', string)
         else:
@@ -173,7 +180,6 @@ def render(string, *, highlight=None, front=None):
     # NL-specific (or specific to woorden.org)
     string = re.sub(r'Toon alle vervoegingen', '', string)
     # Ensure headings begin on their own line (also covers plural forms, eg "Synoniemen")
-    # TODO Also put these bold/colored/dimmed since they're headings?
     string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', '\n\g<1>', string)
     # Remove seperators in plurals (eg in the section: "Verbuigingen")
     # (note, just for display here; this doesn't help with matching)
@@ -245,7 +251,7 @@ def render(string, *, highlight=None, front=None):
         # https://docs.ankiweb.net/#/searching
         # Probably need to:
         # Apply search to a unidecoded copy.
-        # Then record all the patch positions, as [start,end) pairs,
+        # Then record all the match positions, as [start,end) pairs,
         # then, in reverse order (to preserve position numbers), wrap formatting markup around matches
 
     return string
@@ -270,8 +276,6 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
         terms += [next_term]
         search_term = next_term
 
-    if field == 'back':
-        wild = True
     if wild:
         terms = map(lambda x: f'*{x}*', terms)
     terms = map(lambda x: field + ':' + x, terms)
@@ -284,11 +288,13 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
         card_ids = invoke('findCards', query=query)
     return card_ids
 
+def get_empties(deck):
+    return search_anki('', deck=deck, field='back')
+
 
 def info_print(*values):
     # TODO Use colorama
     print(GREY, end='')
-    # TODO set to the whole width of the terminal?
     print('_' * LINE_WIDTH)
     print(*values)
     print(PLAIN, end='')
@@ -305,9 +311,6 @@ def search_google(term):
 
 
 def search_woorden(term, *, url='http://www.woorden.org/woord/'):
-    """The term will be appended to the url"""
-    # TODO generalize this for other online dictionaries?
-    # eg parameterize base_url (with a %s substitute, and the regex ?)
     query_term = urllib.parse.quote(term) # For web searches
     url = url + query_term
     info_print(f"Fetching: {url}")
@@ -370,36 +373,6 @@ def get_card(id):
     return card
 
 
-# TODO this should return a string, rather than print
-def render_card(card, *, term=None):
-    # TODO when front contains HTML, warn, dump it, and clean it and show diff
-    # Auto replace, and use the updateNoteFields API? (after prompting)
-    # https://github.com/FooSoft/anki-connect/
-
-    info_print()
-    f = card['fields']['Front']['value']
-    b = card['fields']['Back']['value']
-    print(render(b, highlight=term, front=f))
-    # # Update readline, to easily complete previously searched/found cards
-    # if term and term != f:
-    #     readline.add_history(f)
-
-
-# TODO deprecate
-def search(term, *, deck):
-    # TODO trim whitespace
-    # Search Anki: exact, then wildcard (front), then the back
-    try:
-        while not term:
-            term = input("\nSearch: ")
-    except:
-        return
-    card_ids = search_anki(term, deck=deck)
-    card_ids = card_ids or search_anki(term, deck=deck, wild=True)
-    card_ids = card_ids or search_anki(term, deck=deck, field='back')
-    return card_ids
-
-
 def add_card(term, definition=None, *, deck):
 
     note = {
@@ -417,14 +390,26 @@ def add_card(term, definition=None, *, deck):
     return card_id
 
 
-def sync():
-    try:
-        invoke('sync')
-    except:
-        # Probably just not running (don't loop on this assumption)
-        launch_anki()
-        time.sleep(5)
-        invoke('sync')
+def delete_card(card_id):
+    # The notes-to-cards relation is 1-to-many.
+    # So, each card has exactly 1 parent note.
+    note_ids = invoke('cardsToNotes', cards=[card_id])
+    invoke('deleteNotes', notes=note_ids)
+
+
+# TODO this should return a string, rather than print
+def render_card(card, *, term=None):
+    # TODO when front contains HTML, warn, dump it, and clean it and show diff
+    # Auto replace, and use the updateNoteFields API? (after prompting)
+
+    info_print()
+    f = card['fields']['Front']['value']
+    b = card['fields']['Back']['value']
+    print(render(b, highlight=term, front=f))
+    # # Update readline, to easily complete previously searched/found cards
+    # if term and term != f:
+    #     readline.add_history(f)
+
 
 def render_cards(card_ids, *, term=None):
     c = -1
@@ -443,53 +428,61 @@ def render_cards(card_ids, *, term=None):
         render_card(card, term=term)
 
 
+def sync():
+    invoke('sync')
+    # And minimize it again
+    os.system(MINIMIZER)
+
+
 def clear_line():
     # TODO detect screen width (or try curses lib)
     print('\r' + (' ' * LINE_WIDTH) + '\r', end='', flush='True')
 
 
 def main(deck):
-
-    # TODO
-    # Some menu options are global (sYnc) and others act on the displayed result
-
     term = None # term = input(f"Search: ") # Factor this into a function
     content = None
     card_id = None
     wild_n = None
     back_n = None
-    while True:
-        menu = [
-            # spell-checker:disable
-            '', deck.upper(), '/ [S]earch', '|', 'Dec[k]', 'S[y]nc', '[Q]uit', '|',
-            # spell-checker:enable
-        ]
+
         # TODO
         # pipe each display through less/PAGER --quit-if-one-screen
         # https://stackoverflow.com/a/39587824/256856
         # https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
 
+    while True:
         # Remind the user of any previous context, and then allow to Add
         if content:
             print(render(content, highlight=term))
-        if term:
-            # spell-checker:disable
-            menu += ['B[r]owse', '[F]etch', '[G]oogle', '|']
-            # spell-checker:enable
 
-            # TODO make these menu entries fixed width with sprintf patterns
-            # Card ID is eg 13 or so chars: 1626707360838
+        # spell-checker:disable
+        menu = [
+            "", "S[y]nc",
+            '|', f"Dec[k]: [{deck.upper()}]",
+        ]
+
+        empty_ids = get_empties(deck)
+        if empty_ids:
+            menu += [f"[E]mpties [{len(empty_ids)}]"]
+
+        if term:
+            menu += ["|", f"[S]earch: [{term}]", "B[r]owse", "[G]oogle", "[F]etch", ]
+
             if wild_n:
-                wild = f"[W]ild [{wild_n}]"
+                wild = f"[W]ilds [{wild_n}]"
                 menu += [wild]
             if back_n:
-                back = f"[B]ack [{back_n}]"
+                back = f"[B]acks [{back_n}]"
                 menu += [back]
+
+            menu += ["|", "Card:"]
             if card_id:
-                menu = menu + ['|', f"Card: [{str(card_id)}]"]
+                menu = menu + [f"[{card_id}]", "[D]elete"]
             else:
-                menu = menu + ['|', f"Card: [A]dd"]
-            menu = menu + ['|', f"Term: [{term}]"]
+                menu = menu + ["[A]dd"]
+
+        # spell-checker:enable
 
         menu = ' '.join(menu)
         menu = re.sub(r'\[', '[' + LT_YELLOW, menu)
@@ -524,15 +517,16 @@ def main(deck):
                         clear_line()
             elif key == 'y':
                 sync()
+            elif card_id and key == 'd':
+                delete_card(card_id)
+                card_id = None
             elif term and key == 'r': # Open Anki browser, for the sake of delete/edit/etc
                 search_anki(term, deck=deck, browse=True)
             elif wild_n and key == 'w': # Search front with wildcard, or just search for *term*
                 card_ids = search_anki(term, deck=deck, wild=True)
-                # TODO report if no results?
                 render_cards(card_ids, term=term)
-            elif back_n and key == 'b': # Search back (implies wildcard matching)
-                card_ids = search_anki(term, deck=deck, field='back')
-                # TODO report if no results?
+            elif back_n and key == 'b': # Search back (with wildcard matching)
+                card_ids = search_anki(term, deck=deck, field='back', wild=True)
                 render_cards(card_ids, term=term)
             elif term and key == 'f':
                 if deck == 'nl':
@@ -552,21 +546,27 @@ def main(deck):
                 # time.sleep(5)
                 # card_ids = search_anki(term)
                 # render_cards(card_ids, term=term)
+            elif empty_ids and key == 'e':
+                empty_ids = get_empties(deck)
+                card_id = empty_ids[0]
+                term = get_card(card_id)['fields']['Front']['value']
+                delete_card(card_id)
+                card_id = None
+                content = None
             elif key in ('s', '/'): # Exact match search
                 content = None
 
                 # TODO factor the prompt of 'term' into a function?
                 try:
-                    # TODO colored INFO print
                     term = input(f"Search: ")
                 except:
-                    continue # TODO why is this necessary to ignore exceptions?
+                    continue
                 card_ids = search_anki(term, deck=deck)
                 # Check other possible query types:
                 # TODO do all the searches (by try to minimise exact and wildcard into one request)
                 # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
                 wild_n = len(search_anki(term, deck=deck, wild=True))
-                back_n = len(search_anki(term, deck=deck, field='back'))
+                back_n = len(search_anki(term, deck=deck, wild=True, field='back'))
                 if not card_ids:
                     print(f"{LT_RED}No exact match\n{PLAIN}")
                     card_id = None
@@ -590,7 +590,7 @@ def main(deck):
 
 
 if __name__ == "__main__":
-    launch_anki()
+    # launch_anki()
     decks = get_deck_names()
     parser = OptionParser()
     parser.add_option("-d", "--deck", dest="deck",

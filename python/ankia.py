@@ -36,9 +36,12 @@ import urllib.request
 # like the render function does already
 # search for front:*style* to find cards w html on the front to clean (but then how to strip them ?)
 
-# Anki Add, also parse out the spellcheck suggestions on the fetched page (test: hoiberg) 
+
+# Anki Add, also parse out the spellcheck suggestions on the fetched page (test: hoiberg)
 # and enable them to be fetched by eg assigning them numbers (single key press?)
 # Consider adding these to autocomplete when searching? Or at least after failed search
+
+# Or in-line autocomplete/spell check when searching? based on existing cards ? or just a web service ?
 
 # TODO look for log4j style console logging/printing (with colors)
 
@@ -50,7 +53,7 @@ LT_RED    = "\033[1;31m" # the '1;' makes it bold as well
 PLAIN     = "\033[0;0m"
 
 # TODO set to the whole width of the terminal?
-LINE_WIDTH = 140
+LINE_WIDTH = 160
 
 # NB, because the sync operation opens new windows, the window list keeps growing
 MINIMIZER = 'for w in `xdotool search --classname "Anki"`; do xdotool windowminimize --sync $w; done'
@@ -324,7 +327,7 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     # &copy:       http://www.woorden.org/woord/zien
     # Bron:        http://www.woorden.org/woord/glashelder
 
-    # TODO extract smarter. Check DOM parsing libs
+    # TODO extract smarter. Check DOM parsing libs / XPATH selection
 
     # BUG parsing broken for 'stokken'
     # BUG parsing broken for http://www.woorden.org/woord/tussenin
@@ -348,7 +351,7 @@ def search_thefreedictionary(term, *, lang):
     except Exception as e:
         info_print(e)
         return
-    # TODO extract smarter. Check DOM parsing libs
+    # TODO extract smarter. Check DOM parsing libs / XPATH expressions
     match = re.search('<div id="Definition"><section .*?>.*?<\/section>', content)
     if not match:
         return
@@ -361,8 +364,6 @@ def search_thefreedictionary(term, *, lang):
     match = re.search(' class="pron">(.*?)</span>', content)
     if match:
         definition = "\n".join([match.group(1), definition])
-    else:
-        info_print("No pronunciation")
 
     return definition
 
@@ -466,8 +467,9 @@ def main(deck):
         if empty_ids:
             menu += [f"[E]mpties [{len(empty_ids)}]"]
 
+        menu += ["|", "[S]earch:"]
         if term:
-            menu += ["|", f"[S]earch: [{term}]", "B[r]owse", "[G]oogle", "[F]etch", ]
+            menu += [f"[{term}]", "B[r]owse", "[G]oogle", "[F]etch", ]
 
             if wild_n:
                 wild = f"[W]ilds [{wild_n}]"
@@ -515,6 +517,7 @@ def main(deck):
                             deck = None
                     except:
                         clear_line()
+                card_id = None
             elif key == 'y':
                 sync()
             elif card_id and key == 'd':
@@ -553,6 +556,8 @@ def main(deck):
                 delete_card(card_id)
                 card_id = None
                 content = None
+                wild_n  = None
+                back_n  = None
             elif key in ('s', '/'): # Exact match search
                 content = None
 

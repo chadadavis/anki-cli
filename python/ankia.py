@@ -363,7 +363,8 @@ def search_thefreedictionary(term, *, lang):
     # Get pronunciation (the IPA version) via Kerneman/Collins (multiple languages), and prepend it
     match = re.search(' class="pron">(.*?)</span>', content)
     if match:
-        definition = "\n".join([match.group(1), definition])
+        ipa_str = '[' + match.group(1) + ']'
+        definition = "\n".join([ipa_str, definition])
 
     return definition
 
@@ -532,13 +533,14 @@ def main(deck):
                 card_ids = search_anki(term, deck=deck, field='back', wild=True)
                 render_cards(card_ids, term=term)
             elif term and key == 'f':
+                # TODO refactor out into a separate function
                 if deck == 'nl':
                     content = search_woorden(term)
                 else:
                     content = search_thefreedictionary(term, lang=deck)
                 if not content:
                     info_print("No results")
-                # Don't need to do anything else here, since it's printed next round
+                # content is printed on next iteration.
             elif term and key == 'g':
                 search_google(term)
             elif not card_id and key == 'a':
@@ -576,6 +578,14 @@ def main(deck):
                     print(f"{LT_RED}No exact match\n{PLAIN}")
                     card_id = None
                     content = None
+                    # Fetch
+                    # TODO refactor out into a separate function
+                    if deck == 'nl':
+                        content = search_woorden(term)
+                    else:
+                        content = search_thefreedictionary(term, lang=deck)
+                    if not content:
+                        info_print("No results")
                     continue
                 # TODO bug, since we collapse doubles, this could have more than one result, eg 'maan'/'man'
                 # Factor out into eg render_cards()

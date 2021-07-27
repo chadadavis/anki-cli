@@ -343,6 +343,8 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
 
 
 def search_thefreedictionary(term, *, lang):
+    if not term or '*' in term:
+        return
     query_term = urllib.parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
     info_print(f"Fetching: {url}")

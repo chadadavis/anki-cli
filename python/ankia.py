@@ -576,7 +576,8 @@ def main(deck):
                 # Check other possible query types:
                 # TODO do all the searches (by try to minimise exact and wildcard into one request)
                 # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
-                wild_n = len(search_anki(term, deck=deck, wild=True))
+
+                wild_n = len(set(search_anki(term, deck=deck, wild=True)) - set(card_ids))
                 back_n = len(search_anki(term, deck=deck, wild=True, field='back'))
                 if not card_ids:
                     print(f"{LT_RED}No exact match\n{PLAIN}")

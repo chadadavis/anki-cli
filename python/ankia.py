@@ -217,14 +217,16 @@ def render(string, *, highlight=None, front=None):
     # Delete leading/trailing space on the entry as a whole
     string = re.sub(r'^\s+', '', string)
     string = re.sub(r'\s+$', '', string)
-    # Canonical newline to start/end
-    string = "\n" + string + "\n"
+
+    if string:
+        # Canonical newline to end
+        string = string + "\n"
 
     if front:
         # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)
         string = re.sub(f'^\s*{front}\s*', '', string)
         # And add it back canonically
-        string = YELLOW + front + PLAIN + '\n' + string
+        string = YELLOW + front + PLAIN + '\n\n' + string
 
     if highlight:
         highlight = re.sub(r'[.]', '\.', highlight)
@@ -292,7 +294,8 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     return card_ids
 
 def get_empties(deck):
-    return search_anki('', deck=deck, field='back')
+    card_ids = search_anki('', deck=deck, field='back')
+    return card_ids
 
 
 def info_print(*values):
@@ -409,10 +412,8 @@ def render_card(card, *, term=None):
     info_print()
     f = card['fields']['Front']['value']
     b = card['fields']['Back']['value']
-    if b:
-        print(render(b, highlight=term, front=f))
-    else:
-        info_print('<Empty>')
+    print(render(b, highlight=term, front=f))
+
     # # Update readline, to easily complete previously searched/found cards
     # TODO but don't want to populate this when rendering results of Wild/Back searches
     # if term and term != f:

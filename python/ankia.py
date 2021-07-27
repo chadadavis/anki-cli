@@ -248,7 +248,7 @@ def render(string, *, highlight=None, front=None):
         # Case insensitive highlighting
         # Note, the (?i:...) doesn't create a group.
         # That's why ({highlight}) needs it's own parens here.
-        string = re.sub(f"(?i:({highlight}))", f"{LT_RED}\g<1>{PLAIN}", string)
+        string = re.sub(f"(?i:({highlight}))", f"{YELLOW}\g<1>{PLAIN}", string)
 
         # TODO Highlight accent-insensitive? (Because accents don't change the semantics in NL)
         # eg exploit should find geëxploiteerd
@@ -319,9 +319,11 @@ def search_google(term):
 def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     query_term = urllib.parse.quote(term) # For web searches
     url = url + query_term
-    info_print(f"Fetching: {url}")
+    print(GREY + f"Fetching: {url} ..." + PLAIN, end='', flush=True)
 
     content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
+    clear_line()
+
     # Pages in different formats, for testing:
     # encyclo:     https://www.woorden.org/woord/hangertje
     # urlencoding: https://www.woorden.org/woord/op zich
@@ -350,12 +352,14 @@ def search_thefreedictionary(term, *, lang):
         return
     query_term = urllib.parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
-    info_print(f"Fetching: {url}")
+    print(GREY + f"Fetching: {url} ..." + PLAIN, end='', flush=True)
     try:
         content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
     except Exception as e:
+        print("\n")
         info_print(e)
         return
+    clear_line()
     # TODO extract smarter. Check DOM parsing libs / XPATH expressions
     match = re.search('<div id="Definition"><section .*?>.*?<\/section>', content)
     if not match:
@@ -428,7 +432,7 @@ def render_cards(card_ids, *, term=None):
         if c > 0:
             print(f"{GREY}{c} of {len(card_ids)}{PLAIN} ", end='', flush=True)
             key = readchar.readkey()
-            print((' ' * 80) + '\r', end='', flush=True)
+            clear_line()
             if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
                 break
 
@@ -463,6 +467,7 @@ def main(deck):
     while True:
         # Remind the user of any previous context, and then allow to Add
         if content:
+            info_print()
             print(render(content, highlight=term))
 
         # spell-checker:disable
@@ -564,9 +569,18 @@ def main(deck):
                 term = get_card(card_id)['fields']['Front']['value']
                 delete_card(card_id)
                 card_id = None
-                content = None
                 wild_n  = None
                 back_n  = None
+
+                # auto fetch
+                # TODO refactor out into a separate function
+                if deck == 'nl':
+                    content = search_woorden(term)
+                else:
+                    content = search_thefreedictionary(term, lang=deck)
+                if not content:
+                    info_print("No results")
+
             elif key in ('s', '/'): # Exact match search
                 content = None
 

@@ -407,8 +407,12 @@ def render_card(card, *, term=None):
     info_print()
     f = card['fields']['Front']['value']
     b = card['fields']['Back']['value']
-    print(render(b, highlight=term, front=f))
+    if b:
+        print(render(b, highlight=term, front=f))
+    else:
+        info_print('<Empty>')
     # # Update readline, to easily complete previously searched/found cards
+    # TODO but don't want to populate this when rendering results of Wild/Back searches
     # if term and term != f:
     #     readline.add_history(f)
 

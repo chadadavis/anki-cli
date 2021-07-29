@@ -162,10 +162,12 @@ def render(string, *, highlight=None, front=None):
 
     # HTML-specific:
     # Remove span tags, so that the text can stay on one line
-    string = re.sub('<[ib]\/?>', '', string)
     string = re.sub('<span.*?>', '', string)
     string = re.sub('<\/span>', '', string)
-    # Replace opening tags with a newline, since usually a new section
+    # These tags are usually used inline and should not have a line break
+    string = re.sub('<[ibu]\/?>', '', string)
+
+    # Replace remaining opening tags with a newline, since usually a new section
     string = re.sub(r'\<[^/].*?\>', '\n', string)
     # Remove remaining tags
     string = re.sub(r'\<.*?\>', '', string)

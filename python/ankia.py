@@ -433,18 +433,23 @@ def delete_card(card_id):
 
 # TODO this should return a string, rather than print
 def render_card(card, *, term=None):
-    # TODO when front contains HTML, warn, dump it, and clean it and show diff
-    # Auto replace, and use the updateNoteFields API? (after prompting)
-
     info_print()
     f = card['fields']['Front']['value']
     b = card['fields']['Back']['value']
     print(render(b, highlight=term, front=f))
 
-    # # Update readline, to easily complete previously searched/found cards
-    # TODO but don't want to populate this when rendering results of Wild/Back searches
-    # if term and term != f:
-    #     readline.add_history(f)
+    if '<' in f or '&nbsp;' in f:
+        info_print("Warning: 'Front' field with HTML hinders exact match search.")
+        # Auto-clean it?
+        # This is likley useless after cleaning all decks once.
+        # As long as you continue to use this script to add cards.
+        if True:
+            cleaned = render(f).strip()
+            card_id = card['cardId']
+            update_card(card_id, front=cleaned)
+            info_print(f"Updated to:")
+            # Get again from Anki to verify updated card
+            render_card(get_card(card_id))
 
 
 def render_cards(card_ids, *, term=None):

@@ -404,11 +404,31 @@ def add_card(term, definition=None, *, deck):
     return card_id
 
 
-def delete_card(card_id):
+def update_card(card_id, *, front=None, back=None):
+    note_id = card_to_note(card_id)
+    note = {
+        'id': note_id,
+        'fields': {},
+    }
+    if front:
+        note['fields']['Front'] = front
+    if back:
+        note['fields']['Back'] = back
+    response = invoke('updateNoteFields', note=note)
+    if response and response['error'] is not None:
+        raise Exception(response['error'])
+
+
+def card_to_note(card_id):
     # The notes-to-cards relation is 1-to-many.
     # So, each card has exactly 1 parent note.
-    note_ids = invoke('cardsToNotes', cards=[card_id])
-    invoke('deleteNotes', notes=note_ids)
+    note_id, = invoke('cardsToNotes', cards=[card_id])
+    return note_id
+
+
+def delete_card(card_id):
+    note_id = card_to_note(card_id)
+    invoke('deleteNotes', notes=[note_id])
 
 
 # TODO this should return a string, rather than print

@@ -575,6 +575,9 @@ def main(deck):
                 wild_n  = None
                 back_n  = None
 
+                # Update readline, as if I had searched for this term
+                readline.add_history(term)
+
                 # auto fetch
                 # TODO refactor out into a separate function
                 if deck == 'nl':

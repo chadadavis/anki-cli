@@ -13,37 +13,26 @@ import urllib.request
 
 # TODO Backlog
 
-# REPL options (interactive mode)
-#
-# when checking for an existing word, print stats on age (use case: "why don't I remember this one? still new?")
-# See cardInfo response fields: interval, due, reps, lapses, left, (ord? , type?)
-# Lookup defs of fields, or just compare to what's displayed in card browser for an example card
-
-# repo/Packaging figure out how to package deps (eg readchar) and test it again after removing local install of readchar
-
-# TODO make a CLI/REPL option to delete the current card (by ID)
-
-# Search for Wild by default if no exact match?
-
-# When adding, use some kind of sentinel marker to note which cards are not yet defined
-# And determine a query that's easy to remember, or built in, for fetching the cards to be defined.
-# Stop using RTM.
-
+# NL-specific pre-processing
 # Bug: I cannot search for uitlaatgassen , since the card only contains: Verbuigingen: uitlaatgas|sen (split)
 # Remove those too? But only when it's in 'Verbuigingen: ...' (check that it's on the same line)
 
-# Anki add: when populating readline with seen cards, the front field should be stripped of HTML,
-# like the render function does already
-# search for front:*style* to find cards w html on the front to clean (but then how to strip them ?)
-
-
-# Anki Add, also parse out the spellcheck suggestions on the fetched page (test: hoiberg)
+# Autocomplete ideas:
+# Implement search autocomplete (emacs-style?) based on wildcar search for 'term*'
+# Or:
+# in-line autocomplete/spell check when searching? based on existing cards ? or just a web service ?
+# Or:
+# Parse out the spellcheck suggestions on the fetched page (test: hoiberg)
 # and enable them to be fetched by eg assigning them numbers (single key press?)
 # Consider adding these to autocomplete when searching? Or at least after failed search
 
-# Or in-line autocomplete/spell check when searching? based on existing cards ? or just a web service ?
+# repo/Packaging figure out how to package deps (eg readchar) and test it again after removing local install of readchar
 
 # TODO look for log4j style console logging/printing (with colors)
+
+# when checking for an existing word, print stats on age (use case: "why don't I remember this one? still new?")
+# See cardInfo response fields: interval, due, reps, lapses, left, (ord? , type?)
+# Lookup defs of fields, or just compare to what's displayed in card browser for an example card
 
 # Color codes: https://stackoverflow.com/a/33206814/256856
 GREY      = "\033[0;02m"

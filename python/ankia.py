@@ -227,14 +227,11 @@ def render(string, *, highlight=None, front=None):
     if front:
         # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)
         string = re.sub(f'^\s*{front}\s*', '', string)
-        # And add it back canonically
-        string = YELLOW + front + PLAIN + '\n\n' + string
 
     if highlight:
         highlight = re.sub(r'[.]', '\.', highlight)
         highlight = re.sub(r'[_]', '.', highlight)
         highlight = re.sub(r'[*]', r'\\w*', highlight)
-
 
         # NL-specific
         # Hack stemming
@@ -260,6 +257,10 @@ def render(string, *, highlight=None, front=None):
         # Apply search to a unidecoded copy.
         # Then record all the match positions, as [start,end) pairs,
         # then, in reverse order (to preserve position numbers), wrap formatting markup around matches
+
+    if front:
+        # And the front back canonically
+        string = YELLOW + front + PLAIN + '\n\n' + string
 
     return string
 

@@ -1,4 +1,23 @@
 #!/usr/bin/env python
+"""Anki add - fetch one definitions and add new cards to Anki language decks
+
+A note one searching for declined / conjugated forms of words:
+
+It would be nice to confirm that the content fetched corresponds to the term
+searched, rather than a declined form. However, each dictionary provider does
+this differently, and not even consistently within a given language, as it may
+depend on the part of speech of the term. So, the user simply needs to be beware
+that if the definition shows a different canonical form, then they should
+re-search for the canonical form, and then add that term instead. This should be
+clearly visible, because the search term, if present, will be highlighted in the
+displayed text.
+
+For example, in Dutch searching for 'geoormerkt' (a past participle) will return
+the definition for 'oormerken' (the infinitive). In that case, you'd rather not
+add that card, but rather re-search for 'oormerken', now that you know it, and
+add that card instead.
+
+"""
 from optparse import OptionParser
 import html
 import json
@@ -8,6 +27,7 @@ import readchar
 import readline # Not referenced, but used by input()
 import sys
 import time
+import unidecode
 import urllib.parse
 import urllib.request
 
@@ -16,6 +36,10 @@ import urllib.request
 # NL-specific pre-processing
 # Bug: I cannot search for uitlaatgassen , since the card only contains: Verbuigingen: uitlaatgas|sen (split)
 # Remove those too? But only when it's in 'Verbuigingen: ...' (check that it's on the same line)
+
+# look into stemming libraries, for nl, de, fr, en
+
+# Spellcheck?
 
 # Autocomplete ideas:
 # Implement search autocomplete (emacs-style?) based on wildcar search for 'term*'
@@ -28,27 +52,22 @@ import urllib.request
 
 # repo/Packaging figure out how to package deps (eg readchar) and test it again after removing local install of readchar
 
-# TODO look for log4j style console logging/printing (with colors)
-
-# when checking for an existing word, print stats on age (use case: "why don't I remember this one? still new?")
-# See cardInfo response fields: interval, due, reps, lapses, left, (ord? , type?)
-# Lookup defs of fields, or just compare to what's displayed in card browser for an example card
+# look for log4j style console logging/printing (with colors)
 
 # Color codes: https://stackoverflow.com/a/33206814/256856
-GREY      = "\033[0;02m"
 YELLOW    = "\033[0;33m"
 LT_YELLOW = "\033[1;33m"
 LT_RED    = "\033[1;31m" # the '1;' makes it bold as well
-PLAIN     = "\033[0;0m"
+GREY      = "\033[0;02m"
+PLAIN     = "\033[0;00m"
 
 LINE_WIDTH = os.get_terminal_size().columns
 
-# NB, because the sync operation opens new windows, the window list keeps growing
+# NB, because the sync operation opens new windows, the window list keeps growing.
+# So, you can't use a static window id here.
 MINIMIZER = 'for w in `xdotool search --classname "Anki"`; do xdotool windowminimize --sync $w; done'
 
 def launch_anki():
-    """Launch anki (in the background) if not already running.
-    """
     info_print('Launching anki ...')
     # And try to minimize it, after giving it a couple seconds to launch:
     # TODO the sleep 2 at the start seems needed because MINIMIZER succeeds because the app is running, but it hasn't finished creating the window yet?
@@ -59,10 +78,10 @@ def launch_anki():
 
 
 def request(action, **params):
-    """Send a request to Anki desktop via anki_connect HTTP server addon
+    """Send a request to Anki desktop via the API for the anki_connect addon
 
+    Details:
     https://github.com/FooSoft/anki-connect/
-    https://foosoft.net/projects/anki-connect/
     """
     return {'action': action, 'params': params, 'version': 6}
 
@@ -88,7 +107,8 @@ def render(string, *, highlight=None, front=None):
     # This is just makes the HTML string easier to read on the terminal console
     # This changes are not saved in the cards
     # TODO render HTML another way? eg as Markdown instead?
-    # At least replace HTML entities with unicode chars (for IPA symbols, etc)
+
+    # Replace HTML entities with unicode chars (for IPA symbols, etc)
     string = html.unescape(string)
 
     # Remove tags that are usually in the phonetic markup
@@ -175,7 +195,7 @@ def render(string, *, highlight=None, front=None):
     # Ensure headings begin on their own line (also covers plural forms, eg "Synoniemen")
     string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', '\n\g<1>', string)
     # Remove seperators in plurals (eg in the section: "Verbuigingen")
-    # (note, just for display here; this doesn't help with matching)
+    # (NB, just for display here; this doesn't help with matching)
     string = re.sub(r'\|', '', string)
 
     # TODO how to match (either direction) verdwaz(en) <=> verdwaas(de)
@@ -216,6 +236,7 @@ def render(string, *, highlight=None, front=None):
         # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)
         string = re.sub(f'^\s*{front}\s*', '', string)
 
+    # TODO refactor this out
     if highlight:
         highlight = re.sub(r'[.]', '\.', highlight)
         highlight = re.sub(r'[_]', '.', highlight)
@@ -232,19 +253,31 @@ def render(string, *, highlight=None, front=None):
         # This is because the examples in the 'back' field will include declined forms
         highlight = re.sub(r'(.)\1', '\g<1>{1,2}', highlight)
 
-        # Case insensitive highlighting
-        # Note, the (?i:...) doesn't create a group.
-        # That's why ({highlight}) needs it's own parens here.
-        string = re.sub(f"(?i:({highlight}))", f"{YELLOW}\g<1>{PLAIN}", string)
+        # TODO Highlight accent-insensitive:
+        # Start on a copy without accents:
+        decoded = unidecode.unidecode(string)
+        # NB, the string length will be the same if accents are simply removed.
+        # However, chars like the German 'ß' could make the decoded longer.
+        # So, make sure that it's safe to use this position-based approach:
+        if len(string) == len(decoded):
+            # Get all match position intervals (half-open intervals)
+            i = re.finditer(f"(?i:{highlight})", decoded)
+            spans = [m.span() for m in i]
+            l = list(string)
+            # Process the string back-to-front, since inserting changes indexes
+            for t in reversed(spans):
+                x,y = t
+                # Also, here, y before x, since back-to-front
+                l.insert(y, PLAIN)
+                l.insert(x, YELLOW)
 
-        # TODO Highlight accent-insensitive? (Because accents don't change the semantics in NL)
-        # eg exploit should find geëxploiteerd
-        # It should be possible with non-combining mode: nc:geëxploiteerd but doesn't seem to work
-        # https://docs.ankiweb.net/#/searching
-        # Probably need to:
-        # Apply search to a unidecoded copy.
-        # Then record all the match positions, as [start,end) pairs,
-        # then, in reverse order (to preserve position numbers), wrap formatting markup around matches
+            string = ''.join(l)
+        else:
+            # We can't do accent-insensitive hightlighting.
+            # Just do case-insensitive highlighting.
+            # NB, the (?i:...) doesn't create a group.
+            # That's why ({highlight}) needs it's own parens here.
+            string = re.sub(f"(?i:({highlight}))", f"{YELLOW}\g<1>{PLAIN}", string)
 
     if front:
         # And the front back canonically
@@ -258,11 +291,18 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     # If term contains whitespace, either must quote the whole thing, or replace spaces:
     search_term = re.sub(r' ', '_', term) # For Anki searches
 
+    # TODO accent-insensitive search?
+    # eg exploit should find geëxploiteerd
+    # It should be possible with Anki's non-combining mode: nc:geëxploiteerd
+    # https://docs.ankiweb.net/#/searching
+    # But doesn't seem to work
+
     # Collapse double letters into a disjunction, eg: (NL-specific)
     # This implies that the user should, when in doubt, use double chars in the query
     # deck:nl (front:dooen OR front:doen)
     # or use a re: (but that doesn't seem to work)
     # TODO BUG: this isn't a proper Combination (maths), so it misses some cases
+    # TODO consider a stemming library here?
 
     terms = [search_term]
     while True:
@@ -332,8 +372,6 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     # match = re.search(f'(\<h2.*?{term}.*?)(?=div)', content) # This should handle all cases (first new/closing div)
     if not match:
         return
-    # TODO also parse out the term in the definition, as it might differ from the search term
-    # eg searching for a past participle: geoormerkt => oormerken
     definition = match.group()
     return definition
 
@@ -385,7 +423,7 @@ def add_card(term, definition=None, *, deck):
     }
     if definition:
         note['fields']['Back'] = definition
-        # Note, duplicate check (deck scope) enabled by default
+        # NB, duplicate check (deck scope) enabled by default
         card_id = invoke('addNote', note=note)
     else:
         card_id = invoke('guiAddCards', note=note)
@@ -573,6 +611,7 @@ def main(deck):
             elif not card_id and key == 'a':
                 card_id = add_card(term, content, deck=deck)
                 content = None
+
                 # Search again, to confirm that it's added/findable
                 # (The add_card() doesn't sync immediately, so don't bother re-searching)
                 # time.sleep(5)

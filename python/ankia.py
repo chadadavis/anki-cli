@@ -41,8 +41,7 @@ LT_YELLOW = "\033[1;33m"
 LT_RED    = "\033[1;31m" # the '1;' makes it bold as well
 PLAIN     = "\033[0;0m"
 
-# TODO set to the whole width of the terminal?
-LINE_WIDTH = 160
+LINE_WIDTH = os.get_terminal_size().columns
 
 # NB, because the sync operation opens new windows, the window list keeps growing
 MINIMIZER = 'for w in `xdotool search --classname "Anki"`; do xdotool windowminimize --sync $w; done'
@@ -465,7 +464,6 @@ def sync():
 
 
 def clear_line():
-    # TODO detect screen width (or try curses lib)
     print('\r' + (' ' * LINE_WIDTH) + '\r', end='', flush='True')
 
 

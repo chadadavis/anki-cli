@@ -39,7 +39,7 @@ import urllib.request
 
 # look into stemming libraries, for nl, de, fr, en
 
-# Spellcheck?
+# Spellcheck? local vs API?
 
 # Autocomplete ideas:
 # Implement search autocomplete (emacs-style?) based on wildcar search for 'term*'
@@ -64,16 +64,21 @@ PLAIN     = "\033[0;00m"
 LINE_WIDTH = os.get_terminal_size().columns
 
 # NB, because the sync operation opens new windows, the window list keeps growing.
-# So, you can't use a static window id here.
+# So, you can't use a static window id here. So, use the classname to get them all.
 MINIMIZER = 'for w in `xdotool search --classname "Anki"`; do xdotool windowminimize --sync $w; done'
 
-def launch_anki():
-    info_print('Launching anki ...')
-    # And try to minimize it, after giving it a couple seconds to launch:
-    # TODO the sleep 2 at the start seems needed because MINIMIZER succeeds because the app is running, but it hasn't finished creating the window yet?
-    # Or check the window class / name via some tool for getting the window ID / settings
-    # Better to have a separate function to test if it's already running, like get_deck_names()
-    # And only if that fails, then launch (and minimize)
+def __launch_anki():
+    """Try to launch Anki, if not already running, and verify launch.
+
+    This is quite fragile. Since it's not very reliable, it might be more
+    effective to not run this every time on startup, but only e.g. after an API
+    call fails.
+
+    Also attempts to minimize Anki after successful launch.
+
+    BUG: The sleep 2 at the start seems needed because `MINIMIZER` succeeds
+    because the app is running, but it hasn't finished creating the window yet?
+    """
     os.system(f'anki >/dev/null & for i in 1 2 3 4 5; do sleep 2; if {MINIMIZER}; then break; else echo Waiting ... $i; sleep 1; fi; done')
 
 
@@ -90,12 +95,17 @@ def invoke(action, **params):
     reqJson = json.dumps(request(action, **params)).encode('utf-8')
     req = urllib.request.Request('http://localhost:8765', reqJson)
 
-    # TODO try / except here and then consider auto-launching anki?
-
-    response = json.load(urllib.request.urlopen(req))
-    if response['error'] is not None:
-        raise Exception(response['error'])
-    return response['result']
+    try:
+        response = json.load(urllib.request.urlopen(req))
+        if response['error'] is not None:
+            raise Exception(response['error'])
+        return response['result']
+    except (ConnectionRefusedError, urllib.error.URLError) as e:
+        print(""""
+            Failed to connect to Anki. Make sure that Anki is running, and using the anki_connect addon.
+            https://github.com/FooSoft/anki-connect/
+        """)
+        exit()
 
 
 def get_deck_names():
@@ -202,8 +212,6 @@ def render(string, *, highlight=None, front=None):
     #      Look into stemming libraries? (Could be a useful Addon for Anki too)
     #      And one that also maps irregular verbs? liggen => gelegen ?
 
-    # TODO look into NL spellcheck libs / services (Google?)
-
     # NL-specific: Newlines before example `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
     # (using a negative lookbehind assertion here)
@@ -244,6 +252,8 @@ def render(string, *, highlight=None, front=None):
 
         # NL-specific
         # Hack stemming
+        # TODO find a stemming library, at least for DE and NL
+        # This fails for eg 'erst' in DE
         suffixes = 'ende|end|en|de|d|ste|st|ten|te|t|sen|zen|ze|jes|je|es|e|\'?s'
         highlight = re.sub(f'({suffixes})$', '', highlight)
         highlight = f"(ge)?{highlight}({suffixes})?"
@@ -253,12 +263,12 @@ def render(string, *, highlight=None, front=None):
         # This is because the examples in the 'back' field will include declined forms
         highlight = re.sub(r'(.)\1', '\g<1>{1,2}', highlight)
 
-        # TODO Highlight accent-insensitive:
+        # Highlight accent-insensitive:
         # Start on a copy without accents:
         decoded = unidecode.unidecode(string)
         # NB, the string length will be the same if accents are simply removed.
         # However, chars like the German 'ß' could make the decoded longer.
-        # So, make sure that it's safe to use this position-based approach:
+        # So, first test if it's safe to use this position-based approach:
         if len(string) == len(decoded):
             # Get all match position intervals (half-open intervals)
             i = re.finditer(f"(?i:{highlight})", decoded)
@@ -323,6 +333,7 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     else:
         card_ids = invoke('findCards', query=query)
     return card_ids
+
 
 def get_empties(deck):
     card_ids = search_anki('', deck=deck, field='back')
@@ -457,7 +468,7 @@ def delete_card(card_id):
     invoke('deleteNotes', notes=[note_id])
 
 
-# TODO this should return a string, rather than print
+# TODO refactor: this should return a string, rather than print
 def render_card(card, *, term=None):
     info_print()
     f = card['fields']['Front']['value']
@@ -491,7 +502,7 @@ def render_cards(card_ids, *, term=None):
                 break
 
         card = get_card(card_id)
-        # TODO render_card should return a string
+        # TODO refactor: render_card should return a string
         render_card(card, term=term)
 
 
@@ -611,12 +622,6 @@ def main(deck):
             elif not card_id and key == 'a':
                 card_id = add_card(term, content, deck=deck)
                 content = None
-
-                # Search again, to confirm that it's added/findable
-                # (The add_card() doesn't sync immediately, so don't bother re-searching)
-                # time.sleep(5)
-                # card_ids = search_anki(term)
-                # render_cards(card_ids, term=term)
             elif empty_ids and key == 'e':
                 empty_ids = get_empties(deck)
                 card_id = empty_ids[0]
@@ -684,7 +689,6 @@ def main(deck):
 
 
 if __name__ == "__main__":
-    # launch_anki()
     decks = get_deck_names()
     parser = OptionParser()
     parser.add_option("-d", "--deck", dest="deck",

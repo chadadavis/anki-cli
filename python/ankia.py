@@ -18,50 +18,71 @@ add that card, but rather re-search for 'oormerken', now that you know it, and
 add that card instead.
 
 """
-from optparse import OptionParser
 import html
 import json
 import os
 import re
-import readchar
-import readline # Not referenced, but used by input()
+import readline  # Not referenced, but used by input()
 import sys
 import time
-import unidecode
 import urllib.parse
 import urllib.request
+from optparse import OptionParser
 
-# TODO Backlog
+import hunspell
+import readchar
+import unidecode
+from iso639 import languages
+from nltk.stem.snowball import SnowballStemmer
 
-# NL-specific pre-processing
-# Bug: I cannot search for uitlaatgassen , since the card only contains: Verbuigingen: uitlaatgas|sen (split)
-# Remove those too? But only when it's in 'Verbuigingen: ...' (check that it's on the same line)
+# Backlog/TODOs
 
-# look into stemming libraries, for nl, de, fr, en
+# BUG: no way to delete cards when multiple matches, eg search for wennen, or just any wildcard search
+# Could just process 'card_ids' the same way we already do for 'empty_ids', and get rid of `render_cards()`
 
-# Spellcheck? local vs API?
+# Find/remove/update all cards that have a pipe char | in the Verbuigingen/Vervoegingen:
+# So that I can search/find eg bestek|ken without the pipe char
+# Search: back:*Ver*gingen:*|* => 2585 cards
+# Make a parser to grab and process it, like what's in the render() already, but then also replace it in the description.
+# Maybe copy out some things from render() that should be permanent into it's own def
+# And then update the card (like we did before to remove HTML from 'front')
 
-# Autocomplete ideas:
-# Implement search autocomplete (emacs-style?) based on wildcar search for 'term*'
-# Or:
-# in-line autocomplete/spell check when searching? based on existing cards ? or just a web service ?
-# Or:
+# Stemming for search?
+# Or add the inflected forms to the card? as a new field?
+# Most useful for langs that you don't know so well.
+# (because those matches would be more important than just matching in the desc somewhere)
+# Worst case, the online dictionary solves this anyway, so then I'll realize that I searched the wrong card.
+# So, it's just one extra manual search. Maybe not worth optimizing. But more interesting for highlighting.
+
+# Spellcheck, when a search has no results (and also when it does?)
+# Get suggestions from FreeDictionary, or woorden.org, or external, eg Google API?
 # Parse out the spellcheck suggestions on the fetched page (test: hoiberg)
 # and enable them to be fetched by eg assigning them numbers (single key press?)
-# Consider adding these to autocomplete when searching? Or at least after failed search
+# Or just add/replace them to readline autocomplete history, and then press TAB
 
-# repo/Packaging figure out how to package deps (eg readchar) and test it again after removing local install of readchar
+# Repo/Packaging:
+# figure out how to package deps (eg readchar) and test it again after removing local install of readchar
 
+# Logging:
 # look for log4j style console logging/printing (with colors)
+
+# UI:
+# Consider make a web UI, via an HTTP server running as an anki-addon? (like anki-connect)
+
+################################################################################
 
 # Color codes: https://stackoverflow.com/a/33206814/256856
 YELLOW    = "\033[0;33m"
 LT_YELLOW = "\033[1;33m"
+RED    = "\033[0;31m"
 LT_RED    = "\033[1;31m" # the '1;' makes it bold as well
 GREY      = "\033[0;02m"
 PLAIN     = "\033[0;00m"
 
 LINE_WIDTH = os.get_terminal_size().columns
+
+# q, ESC-ESC, Ctrl-C, Ctrl-D, Ctrl-W
+KEYS_CLOSE = ('q', '\x1b\x1b', '\x03', '\x04', '\x17')
 
 # NB, because the sync operation opens new windows, the window list keeps growing.
 # So, you can't use a static window id here. So, use the classname to get them all.
@@ -113,7 +134,7 @@ def get_deck_names():
     return names
 
 
-def render(string, *, highlight=None, front=None):
+def render(string, *, highlight=None, front=None, deck=None):
     # This is just makes the HTML string easier to read on the terminal console
     # This changes are not saved in the cards
     # TODO render HTML another way? eg as Markdown instead?
@@ -208,10 +229,6 @@ def render(string, *, highlight=None, front=None):
     # (NB, just for display here; this doesn't help with matching)
     string = re.sub(r'\|', '', string)
 
-    # TODO how to match (either direction) verdwaz(en) <=> verdwaas(de)
-    #      Look into stemming libraries? (Could be a useful Addon for Anki too)
-    #      And one that also maps irregular verbs? liggen => gelegen ?
-
     # NL-specific: Newlines before example `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
     # (using a negative lookbehind assertion here)
@@ -245,33 +262,135 @@ def render(string, *, highlight=None, front=None):
         string = re.sub(f'^\s*{front}\s*', '', string)
 
     # TODO refactor this out
-    if highlight:
+    if highlight and deck:
         highlight = re.sub(r'[.]', '\.', highlight)
         highlight = re.sub(r'[_]', '.', highlight)
         highlight = re.sub(r'[*]', r'\\w*', highlight)
 
-        # NL-specific
-        # Hack stemming
-        # TODO find a stemming library, at least for DE and NL
-        # This fails for eg 'erst' in DE
-        suffixes = 'ende|end|en|de|d|ste|st|ten|te|t|sen|zen|ze|jes|je|es|e|\'?s'
-        highlight = re.sub(f'({suffixes})$', '', highlight)
-        highlight = f"(ge)?{highlight}({suffixes})?"
+        # Terms to highlight, in addition to the query term
+        highlights = { highlight }
 
         # Collapse double letters in the search term
-        # eg ledemaat => ledema{1,2}t can now also match 'ledematen'
+        # eg ledemaat => ledemat
+        # So that can now also match 'ledematen'
         # This is because the examples in the 'back' field will include declined forms
-        highlight = re.sub(r'(.)\1', '\g<1>{1,2}', highlight)
+        collapsed = re.sub(r'(.)\1', '\g<1>', highlight)
+        if collapsed != highlight:
+            highlights.add(collapsed)
+
+        if front:
+            # Also highlight the canonical form, in case the search term was different
+            highlights.add(front)
+
+        # TODO also factor out the stemming (separate from highlighting, since lang-specific)
+
+        # Map e.g. 'de' to 'german', as required by SnowballStemmer
+        lang = languages.get(alpha2=deck).name.lower()
+        stemmer = SnowballStemmer(lang)
+        stem = stemmer.stem(highlight)
+        if stem != highlight:
+            highlights.add(stem)
+        front_or_highlight = unidecode.unidecode(front if front else highlight)
+
+        # Language/source-specific extraction of inflected forms
+        if deck == 'nl':
+            # Hack stemming, assuming -en suffix
+            # For cases: verb infinitives, or plural nouns without singular
+            # eg ski-ën, hersen-en
+            highlights.add( re.sub(r'en$', '', front_or_highlight) )
+
+            # Find given inflections
+            for match in re.findall(r'(?:Vervoegingen|Verbuigingen):\s+(.*?)\s+\(', string):
+                # Remove separators, e.g. in "Verbuigingen: uitlaatgas|sen (...)"
+                match = re.sub(r'|', '', match)
+
+                # If past participle, remove the 'is' or 'heeft'
+                # Sometimes as eg: 'is, heeft uitgerust' or 'heeft, is uitgerust'
+                match = re.sub(r'^(is|heeft)(,\s+(is|heeft))?\s+', '', match)
+
+                # This is for descriptions with a placeholder char like:
+                # "kind - Verbuigingen: -eren" : "kinderen", or "'s" for "solo" => "solo's"
+                match = re.sub(r"^[-'~]", front_or_highlight, match)
+
+                # plural nouns with multiple declensions, CSV
+                # eg waarde => waarden, waardes
+                if ',' in match:
+                    highlights.update(re.split(r',\s*', match))
+                    match = ''
+
+                # Hack stemming for infinitive forms with a consonant change in simple past tense:
+                # dreef => drij(ven) => drij(f)
+                # koos => kie(zen) => kie(s)
+                if front_or_highlight.endswith('ven') and match.endswith('f'):
+                    highlights.add( re.sub(r'ven$', '', front_or_highlight) + 'f' )
+                if front_or_highlight.endswith('zen') and match.endswith('s'):
+                    highlights.add( re.sub(r'zen$', '', front_or_highlight) + 's' )
+
+                # Allow separable verbs to be separated, in both directions.
+                # ineenstorten => 'stortte ineen'
+                if separable := re.findall(r'^(\S+)\s+(\S+)$', match):
+                    # NB, the `pre` is anchored with \b because the prepositions
+                    # are short and there would otherwise be many false positive
+                    # matches
+
+                    # eg stortte, ineen
+                    (conjugated, pre), = separable
+                    highlights.add( f'{conjugated}.*?\\b{pre}' )
+                    highlights.add( f'\\b{pre}.*?{conjugated}' )
+
+                    # eg storten
+                    base = re.sub(f'^{pre}', '', front_or_highlight)
+                    highlights.add( f'{base}.*?\\b{pre}' )
+                    highlights.add( f'\\b{pre}.*?{base}' )
+
+                    # eg stort
+                    stem = re.sub(f'en$', '', base)
+                    highlights.add( f'{stem}.*?\\b{pre}' )
+                    highlights.add( f'\\b{pre}.*?{stem}' )
+
+                    match = ''
+
+                if match:
+                    highlights.add(match)
+
+        elif deck == 'de':
+            if front_or_highlight.endswith('en'):
+                highlights.add( re.sub(r'en$', '', front_or_highlight) )
+
+            # TODO use the debugger to test
+            # DE: <gehst, ging, ist gegangen> gehen
+
+                #TODO DEL, and make a macro to insert a debug print for an expression eg:
+                # print(f'match:{match}')
+
+            # Could also get the conjugations via the section (online):
+            # Collins German Verb Tables (and for French, English)
+            # Or try Verbix? (API? Other APIs online for inflected forms?)
+            ...
+        elif deck == 'en':
+            ...
+            # TODO
+            # EN: v. walked, walk·ing, walks
+
+        else:
+            ...
+
+        # Sort the highlight terms so that the longest are first.
+        # Since inflections might be prefixes.
+        # i.e. this will prefer matching 'kinderen' before 'kind'
+        highlight_re = '|'.join(reversed(sorted(highlights, key=len)))
 
         # Highlight accent-insensitive:
         # Start on a copy without accents:
-        decoded = unidecode.unidecode(string)
+        string_decoded = unidecode.unidecode(string)
         # NB, the string length will be the same if accents are simply removed.
         # However, chars like the German 'ß' could make the decoded longer.
         # So, first test if it's safe to use this position-based approach:
-        if len(string) == len(decoded):
+        if len(string) == len(string_decoded):
+            # And the terms to highlight need to be normalized then too:
+            highlight_re_decoded = unidecode.unidecode(highlight_re)
             # Get all match position intervals (half-open intervals)
-            i = re.finditer(f"(?i:{highlight})", decoded)
+            i = re.finditer(f"(?i:{highlight_re_decoded})", string_decoded)
             spans = [m.span() for m in i]
             l = list(string)
             # Process the string back-to-front, since inserting changes indexes
@@ -287,7 +406,7 @@ def render(string, *, highlight=None, front=None):
             # Just do case-insensitive highlighting.
             # NB, the (?i:...) doesn't create a group.
             # That's why ({highlight}) needs it's own parens here.
-            string = re.sub(f"(?i:({highlight}))", f"{YELLOW}\g<1>{PLAIN}", string)
+            string = re.sub(f"(?i:({highlight_re}))", f"{YELLOW}\g<1>{PLAIN}", string)
 
     if front:
         # And the front back canonically
@@ -473,7 +592,8 @@ def render_card(card, *, term=None):
     info_print()
     f = card['fields']['Front']['value']
     b = card['fields']['Back']['value']
-    print(render(b, highlight=term, front=f))
+    deck = card['deckName']
+    print(render(b, highlight=term, front=f, deck=deck))
 
     if '<' in f or '&nbsp;' in f:
         info_print("Warning: 'Front' field with HTML hinders exact match search.")
@@ -498,7 +618,7 @@ def render_cards(card_ids, *, term=None):
             print(f"{GREY}{c} of {len(card_ids)}{PLAIN} ", end='', flush=True)
             key = readchar.readkey()
             clear_line()
-            if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
+            if key in KEYS_CLOSE:
                 break
 
         card = get_card(card_id)
@@ -516,6 +636,10 @@ def clear_line():
     print('\r' + (' ' * LINE_WIDTH) + '\r', end='', flush='True')
 
 
+def clear_screen():
+    print('\033c')
+
+
 def main(deck):
     term = None # term = input(f"Search: ") # Factor this into a function
     content = None
@@ -525,6 +649,8 @@ def main(deck):
 
         # TODO
         # pipe each display through less/PAGER --quit-if-one-screen
+        # Consider clearscreen, to reset height to top, at least if processing a list of results
+        # (until I figure out how to use curses to make a full-screen CLI)
         # https://stackoverflow.com/a/39587824/256856
         # https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
 
@@ -532,7 +658,7 @@ def main(deck):
         # Remind the user of any previous context, and then allow to Add
         if content:
             info_print()
-            print(render(content, highlight=term))
+            print(render(content, highlight=term, deck=deck))
 
         # spell-checker:disable
         menu = [
@@ -540,6 +666,9 @@ def main(deck):
             '|', f"Dec[k]: [{deck.upper()}]",
         ]
 
+        # TODO instead of separate def for render_cards(), process them like a
+        # queue, like we do here with empty_ids, so that we still have all the
+        # menu options, like delete a card when there are multiple matches, etc
         empty_ids = get_empties(deck)
         if empty_ids:
             menu += [f"[E]mpties [{len(empty_ids)}]"]
@@ -574,7 +703,11 @@ def main(deck):
             # Clear the menu:
             clear_line()
 
-            if key in ('q', '\x1b\x1b', '\x03', '\x04'): # q, ESC-ESC, Ctrl-C, Ctrl-D
+            # This works, but then the menu is always one a diff line.
+            # Also, clearing the screen erases history, which isn't great.
+            # clear_screen()
+
+            if key in (KEYS_CLOSE):
                 exit()
             elif key == '.':
                 # Reload (for 'live' editing / debugging)
@@ -583,7 +716,7 @@ def main(deck):
                 info_print(f"pid: {os.getpid()} mtime: {ts} execv: {sys.argv[0]}")
                 os.execv(sys.argv[0], sys.argv)
             elif key == '\x0c': # Ctrl-L clear screen
-                print('\033c')
+                clear_screen()
             elif key == 'k':
                 deck = None
                 while not deck:
@@ -659,7 +792,7 @@ def main(deck):
                 wild_n = len(set(search_anki(term, deck=deck, wild=True)) - set(card_ids))
                 back_n = len(search_anki(term, deck=deck, wild=True, field='back'))
                 if not card_ids:
-                    print(f"{LT_RED}No exact match\n{PLAIN}")
+                    print(f"{RED}No exact match\n{PLAIN}")
                     card_id = None
                     content = None
                     # Fetch
@@ -698,4 +831,5 @@ if __name__ == "__main__":
     if not options.deck:
         # Take the first deck by default; fail if there are none
         options.deck = decks[0]
+
     main(options.deck)

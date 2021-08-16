@@ -37,15 +37,18 @@ from nltk.stem.snowball import SnowballStemmer
 
 # Backlog/TODOs
 
+# BUG:
+# Don't fetch online when it's a wildcard (*) query
+
 # BUG: no way to delete cards when multiple matches, eg search for wennen, or just any wildcard search
 # Could just process 'card_ids' the same way we already do for 'empty_ids', and get rid of `render_cards()`
 
-# Find/remove/update all cards that have a pipe char | in the Verbuigingen/Vervoegingen:
-# So that I can search/find eg bestek|ken without the pipe char
-# Search: back:*Ver*gingen:*|* => 2585 cards
-# Make a parser to grab and process it, like what's in the render() already, but then also replace it in the description.
-# Maybe copy out some things from render() that should be permanent into it's own def
-# And then update the card (like we did before to remove HTML from 'front')
+# TODO
+# pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
+# https://stackoverflow.com/a/39587824/256856
+# https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
+
+# Stemming
 
 # Stemming for search?
 # Or add the inflected forms to the card? as a new field?
@@ -54,11 +57,22 @@ from nltk.stem.snowball import SnowballStemmer
 # Worst case, the online dictionary solves this anyway, so then I'll realize that I searched the wrong card.
 # So, it's just one extra manual search. Maybe not worth optimizing. But more interesting for highlighting.
 
+# Enable searching for plural forms on the back of cards:
+# Find/remove/update all cards that have a pipe char | in the Verbuigingen/Vervoegingen:
+# So that I can also search/find (not just highlight) eg bestek|ken without the pipe char
+# Search: back:*Ver*gingen:*|* => 2585 cards
+# Make a parser to grab and process it, like what's in the render() already, but then also replace it in the description.
+# Maybe copy out some things from render() that should be permanent into it's own def
+# And then update the card (like we did before to remove HTML from 'front')
+
 # Spellcheck, when a search has no results (and also when it does?)
 # Get suggestions from FreeDictionary, or woorden.org, or external, eg Google API?
 # Parse out the spellcheck suggestions on the fetched page (test: hoiberg)
 # and enable them to be fetched by eg assigning them numbers (single key press?)
 # Or just add/replace them to readline autocomplete history, and then press TAB
+# Alternatively:
+# use readline autocomplete and populate it from a wildcard prefix search to anki
+# i.e. just the same that we have in the [W]ild menu option (but fetch the 'front' terms)
 
 # Repo/Packaging:
 # figure out how to package deps (eg readchar) and test it again after removing local install of readchar
@@ -74,7 +88,7 @@ from nltk.stem.snowball import SnowballStemmer
 # Color codes: https://stackoverflow.com/a/33206814/256856
 YELLOW    = "\033[0;33m"
 LT_YELLOW = "\033[1;33m"
-RED    = "\033[0;31m"
+RED       = "\033[0;31m"
 LT_RED    = "\033[1;31m" # the '1;' makes it bold as well
 GREY      = "\033[0;02m"
 PLAIN     = "\033[0;00m"
@@ -300,7 +314,7 @@ def render(string, *, highlight=None, front=None, deck=None):
             highlights.add( re.sub(r'en$', '', front_or_highlight) )
 
             # Find given inflections
-            for match in re.findall(r'(?:Vervoegingen|Verbuigingen):\s+(.*?)\s+\(', string):
+            for match in re.findall(r'(?m)(?:Vervoegingen|Verbuigingen):\s*(.*?)\s*(?:<|\(|$)', string):
                 # Remove separators, e.g. in "Verbuigingen: uitlaatgas|sen (...)"
                 match = re.sub(r'|', '', match)
 
@@ -647,13 +661,6 @@ def main(deck):
     wild_n = None
     back_n = None
 
-        # TODO
-        # pipe each display through less/PAGER --quit-if-one-screen
-        # Consider clearscreen, to reset height to top, at least if processing a list of results
-        # (until I figure out how to use curses to make a full-screen CLI)
-        # https://stackoverflow.com/a/39587824/256856
-        # https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
-
     while True:
         # Remind the user of any previous context, and then allow to Add
         if content:
@@ -669,6 +676,8 @@ def main(deck):
         # TODO instead of separate def for render_cards(), process them like a
         # queue, like we do here with empty_ids, so that we still have all the
         # menu options, like delete a card when there are multiple matches, etc
+        # Apply this to card_ids as well.
+        # That will then also make it easier to then send each popped result through $PAGER .
         empty_ids = get_empties(deck)
         if empty_ids:
             menu += [f"[E]mpties [{len(empty_ids)}]"]
@@ -804,7 +813,7 @@ def main(deck):
                     if not content:
                         info_print("No results")
                     continue
-                # TODO bug, since we collapse doubles, this could have more than one result, eg 'maan'/'man'
+                # TODO bug, since we collapse double chars, this could have more than one result, eg 'maan'/'man'
                 # Factor out into eg render_cards()
                 if len(card_ids) == 1:
                     card_id, = card_ids

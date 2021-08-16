@@ -29,7 +29,6 @@ import urllib.parse
 import urllib.request
 from optparse import OptionParser
 
-import hunspell
 import readchar
 import unidecode
 from iso639 import languages
@@ -42,6 +41,12 @@ from nltk.stem.snowball import SnowballStemmer
 
 # BUG: no way to delete cards when multiple matches, eg search for wennen, or just any wildcard search
 # Could just process 'card_ids' the same way we already do for 'empty_ids', and get rid of `render_cards()`
+# And see if diff keys could control scrolling to the rest of this card or going to
+# the next card.
+
+# Maybe related BUG:
+# cant add card for stekken because it also matches existing card
+# steken (and then there's no option to add). So I have to delete and add in reverse order
 
 # TODO
 # pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
@@ -82,6 +87,11 @@ from nltk.stem.snowball import SnowballStemmer
 
 # UI:
 # Consider make a web UI, via an HTTP server running as an anki-addon? (like anki-connect)
+
+# anki: can I test if the deck has modifications since last sync, like anki droid
+# does. If not I could at least count any updates or adds or deletes done
+# (But this wouldn't tell me if I made any edits, since those are outside the scope)
+# Any API to query modifications since sync?
 
 ################################################################################
 

@@ -338,6 +338,8 @@ def render(string, *, highlight=None, front=None, deck=None):
                 # If past participle, remove the 'is' or 'heeft'
                 # Sometimes as eg: 'is, heeft uitgerust' or 'heeft, is uitgerust'
                 match = re.sub(r'^(is|heeft)(,\s+(is|heeft))?\s+', '', match)
+                # And the reflexive portion 'zich' isn't necessary, eg: "begeven"
+                match = re.sub(r'\bzich\b', '', match)
 
                 # This is for descriptions with a placeholder char like:
                 # "kind - Verbuigingen: -eren" : "kinderen", or "'s" for "solo" => "solo's"
@@ -348,6 +350,10 @@ def render(string, *, highlight=None, front=None, deck=None):
                 if ',' in match:
                     highlights.update(re.split(r',\s*', match))
                     match = ''
+
+                # Collapse spaces, and trim
+                match = re.sub(r'\s+', ' ', match)
+                match = match.strip()
 
                 # Hack stemming for infinitive forms with a consonant change in simple past tense:
                 # dreef => drij(ven) => drij(f)

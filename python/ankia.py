@@ -36,9 +36,6 @@ from nltk.stem.snowball import SnowballStemmer
 
 # Backlog/TODOs
 
-# BUG:
-# Don't fetch online when it's a wildcard (*) query
-
 # BUG: no way to delete cards when multiple matches, eg search for wennen, or just any wildcard search
 # Could just process 'card_ids' the same way we already do for 'empty_ids', and get rid of `render_cards()`
 # And see if diff keys could control scrolling to the rest of this card or going to
@@ -814,6 +811,9 @@ def main(deck):
                     print(f"{RED}No exact match\n{PLAIN}")
                     card_id = None
                     content = None
+
+                    if '*' in term:
+                        continue
                     # Fetch
                     # TODO refactor out into a separate function
                     if deck == 'nl':

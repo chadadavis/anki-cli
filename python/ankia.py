@@ -321,7 +321,17 @@ def render(string, *, highlight=None, front=None, deck=None):
             highlights.add( re.sub(r'en$', '', front_or_highlight) )
 
             # Find given inflections
-            for match in re.findall(r'(?m)(?:Vervoegingen|Verbuigingen):\s*(.*?)\s*(?:<|\(|$)', string):
+
+            matches = []
+            # Theoretically, we could not have a double loop here, but this makes it easier to read.
+            # There can be multiple inflections in one line (eg prijzen), so it's easier to have two loops.
+            for inflection in re.findall(r'(?ms)^(?:Vervoegingen|Verbuigingen):\s*(.*?)\s*\n{1,2}', string):
+                # There is not always a parenthetical part-of-speech after the inflection of plurals.
+                # Sometimes it's just eol (eg "nederlaag") . So, it ends either with eol $ or open paren (
+                matches += re.findall(r'(?s)(?:\)|^)\s*(.+?)\s*(?:\(|$)', inflection)
+
+            for match in matches:
+
                 # Remove separators, e.g. in "Verbuigingen: uitlaatgas|sen (...)"
                 match = re.sub(r'|', '', match)
 

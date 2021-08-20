@@ -365,6 +365,9 @@ def render(string, *, highlight=None, front=None, deck=None):
 
                 # Allow separable verbs to be separated, in both directions.
                 # ineenstorten => 'stortte ineen'
+                # TODO BUG capture canonical forms that end with known prepositions (make a list)
+                # eg teruggaan op => ging terug op (doesn't work here)
+                # We should maybe just remove the trailing preposition (if it was also a trailing word in the 'front')
                 if separable := re.findall(r'^(\S+)\s+(\S+)$', match):
                     # NB, the `pre` is anchored with \b because the prepositions
                     # are short and there would otherwise be many false positive
@@ -372,18 +375,18 @@ def render(string, *, highlight=None, front=None, deck=None):
 
                     # eg stortte, ineen
                     (conjugated, pre), = separable
-                    highlights.add( f'{conjugated}.*?\\b{pre}' )
-                    highlights.add( f'\\b{pre}.*?{conjugated}' )
+                    highlights.add( f'{conjugated}.*?\\b{pre}\\b' )
+                    highlights.add( f'\\b{pre}\\b.*?{conjugated}' )
 
                     # eg storten
                     base = re.sub(f'^{pre}', '', front_or_highlight)
-                    highlights.add( f'{base}.*?\\b{pre}' )
-                    highlights.add( f'\\b{pre}.*?{base}' )
+                    highlights.add( f'{base}.*?\\b{pre}\\b' )
+                    highlights.add( f'\\b{pre}\\b.*?{base}' )
 
                     # eg stort
                     stem = re.sub(f'en$', '', base)
-                    highlights.add( f'{stem}.*?\\b{pre}' )
-                    highlights.add( f'\\b{pre}.*?{stem}' )
+                    highlights.add( f'{stem}.*?\\b{pre}\\b' )
+                    highlights.add( f'\\b{pre}\\b.*?{stem}' )
 
                     match = ''
 

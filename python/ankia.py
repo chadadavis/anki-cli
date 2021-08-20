@@ -31,7 +31,7 @@ from optparse import OptionParser
 
 import readchar
 import unidecode
-from iso639 import languages
+from iso639 import languages # NB, the pip package is called iso-639 (with a -)
 from nltk.stem.snowball import SnowballStemmer
 
 # Backlog/TODOs
@@ -264,11 +264,8 @@ def render(string, *, highlight=None, front=None, deck=None):
 
     # DE-specific: Newlines before each definition on the card, marked by eg: 2.
     string = re.sub(r';?\s*(\d+\.)', '\n\n\g<1>', string)
-    # And sub-definitions, marked by eg: b)
+    # And sub-definitions, marked by eg: a) or b)
     string = re.sub(r';?\s+([a-z]\)\s+)', '\n  \g<1>', string)
-    # Split sub-sub-definitions onto newlines
-    # TODO: BUG: this breaks text in nl deck like '... [meteorologie]' for some reason
-    # string = re.sub(r'\s*\;\s*', '\n     ', string)
 
     # Delete leading/trailing space on the entry as a whole
     string = re.sub(r'^\s+', '', string)
@@ -336,7 +333,7 @@ def render(string, *, highlight=None, front=None, deck=None):
                 match = re.sub(r'|', '', match)
 
                 # If past participle, remove the 'is' or 'heeft'
-                # Sometimes as eg: 'is, heeft uitgerust' or 'heeft, is uitgerust'
+                # Sometimes as eg: uitrusten: 'is, heeft uitgerust' or 'heeft, is uitgerust'
                 match = re.sub(r'^(is|heeft)(,\s+(is|heeft))?\s+', '', match)
                 # And the reflexive portion 'zich' isn't necessary, eg: "begeven"
                 match = re.sub(r'\bzich\b', '', match)
@@ -399,9 +396,6 @@ def render(string, *, highlight=None, front=None, deck=None):
 
             # TODO use the debugger to test
             # DE: <gehst, ging, ist gegangen> gehen
-
-                #TODO DEL, and make a macro to insert a debug print for an expression eg:
-                # print(f'match:{match}')
 
             # Could also get the conjugations via the section (online):
             # Collins German Verb Tables (and for French, English)

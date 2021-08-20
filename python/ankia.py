@@ -24,6 +24,7 @@ import os
 import re
 import readline  # Not referenced, but used by input()
 import sys
+import textwrap
 import time
 import urllib.parse
 import urllib.request
@@ -101,6 +102,7 @@ GREY      = "\033[0;02m"
 PLAIN     = "\033[0;00m"
 
 LINE_WIDTH = os.get_terminal_size().columns
+WRAP_WIDTH = 100
 
 # q, ESC-ESC, Ctrl-C, Ctrl-D, Ctrl-W
 KEYS_CLOSE = ('q', '\x1b\x1b', '\x03', '\x04', '\x17')
@@ -621,13 +623,27 @@ def delete_card(card_id):
     invoke('deleteNotes', notes=[note_id])
 
 
-# TODO refactor: this should return a string, rather than print
+def wrapper(string):
+    lines_wrapped = []
+    for line in string.splitlines():
+        line_wrap = textwrap.wrap(line, WRAP_WIDTH, replace_whitespace=False, drop_whitespace=False)
+        line_wrap = line_wrap if line_wrap else ['']
+        lines_wrapped += line_wrap
+    string = "\n".join(lines_wrapped)
+    return string
+
+
 def render_card(card, *, term=None):
     info_print()
     f = card['fields']['Front']['value']
     b = card['fields']['Back']['value']
     deck = card['deckName']
-    print(render(b, highlight=term, front=f, deck=deck))
+
+    b_rendered = render(b, highlight=term, front=f, deck=deck)
+    b_wrapped = wrapper(b_rendered)
+
+    # TODO refactor: return a string here
+    print(b_wrapped + "\n")
 
     if '<' in f or '&nbsp;' in f:
         info_print("Warning: 'Front' field with HTML hinders exact match search.")

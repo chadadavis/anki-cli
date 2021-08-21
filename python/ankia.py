@@ -310,7 +310,7 @@ def render(string, *, highlight=None, front=None, deck=None):
         stem = stemmer.stem(highlight)
         if stem != highlight:
             highlights.add(stem)
-        front_or_highlight = unidecode.unidecode(front if front else highlight)
+        front_or_highlight = unidecode.unidecode(front or highlight)
 
         # Language/source-specific extraction of inflected forms
         if deck == 'nl':
@@ -627,7 +627,7 @@ def wrapper(string):
     lines_wrapped = []
     for line in string.splitlines():
         line_wrap = textwrap.wrap(line, WRAP_WIDTH, replace_whitespace=False, drop_whitespace=False)
-        line_wrap = line_wrap if line_wrap else ['']
+        line_wrap = line_wrap or ['']
         lines_wrapped += line_wrap
     string = "\n".join(lines_wrapped)
     return string
@@ -747,7 +747,6 @@ def main(deck):
             key = readchar.readkey()
             # Clear the menu:
             clear_line()
-
             # This works, but then the menu is always one a diff line.
             # Also, clearing the screen erases history, which isn't great.
             # clear_screen()

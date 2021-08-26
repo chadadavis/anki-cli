@@ -32,6 +32,7 @@ from optparse import OptionParser
 
 import readchar
 import unidecode
+from bs4 import BeautifulSoup
 from iso639 import languages # NB, the pip package is called iso-639 (with a -)
 from nltk.stem.snowball import SnowballStemmer
 
@@ -68,14 +69,9 @@ from nltk.stem.snowball import SnowballStemmer
 # Maybe copy out some things from render() that should be permanent into it's own def
 # And then update the card (like we did before to remove HTML from 'front')
 
-# Spellcheck, when a search has no results (and also when it does?)
-# Get suggestions from FreeDictionary, or woorden.org, or external, eg Google API?
-# Parse out the spellcheck suggestions on the fetched page (test: hoiberg)
-# and enable them to be fetched by eg assigning them numbers (single key press?)
-# Or just add/replace them to readline autocomplete history, and then press TAB
-# Alternatively:
-# use readline autocomplete and populate it from a wildcard prefix search to anki
-# i.e. just the same that we have in the [W]ild menu option (but fetch the 'front' terms)
+# Spellcheck/autocomplete/readline
+# First: Local anki search (wildcard on front field, prefix match), deck-specific (needs a global var?)
+# If two TABs, then search online (only once?), FreeDictionary, lang-specific, and add to/replace readline completion
 
 # Repo/Packaging:
 # figure out how to package deps (eg readchar) and test it again after removing local install of readchar
@@ -451,6 +447,16 @@ def render(string, *, highlight=None, front=None, deck=None):
     return string
 
 
+def search(term, *, lang):
+    obj = {}
+    if lang == 'nl':
+        content = search_woorden(term)
+        obj['definition'] = content
+    else:
+        obj = search_thefreedictionary(term, lang=lang)
+    return obj
+
+
 def search_anki(term, *, deck, wild=False, field='front', browse=False):
 
     # If term contains whitespace, either must quote the whole thing, or replace spaces:
@@ -529,7 +535,7 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     # &copy:       http://www.woorden.org/woord/zien
     # Bron:        http://www.woorden.org/woord/glashelder
 
-    # TODO extract smarter. Check DOM parsing libs / XPATH selection
+    # TODO extract smarter. Check DOM parsing libs / XPATH selection / CSS selectors
 
     # BUG parsing broken for 'stokken'
     # BUG parsing broken for http://www.woorden.org/woord/tussenin
@@ -543,24 +549,35 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
 
 
 def search_thefreedictionary(term, *, lang):
+    return_obj = {}
     if not term or '*' in term:
         return
     query_term = urllib.parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
     print(GREY + f"Fetching: {url} ..." + PLAIN, end='', flush=True)
     try:
-        content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
+        response = urllib.request.urlopen(urllib.request.Request(url))
+        content = response.read().decode('utf-8')
+    except urllib.error.HTTPError as response:
+        # NB urllib raises an exception on 404 pages. The content is in the Error.
+        if response.code == 404:
+            content = response.read().decode('utf-8')
+            # Parse out spellcheck suggestions via CSS selector: .suggestions a
+            soup = BeautifulSoup(content, 'html.parser')
+            suggestions = [ r.text for r in soup.select('.suggestions a') ]
+            return_obj['suggestions'] = sorted(suggestions)
     except Exception as e:
         print("\n")
         info_print(e)
         return
+
     clear_line()
-    # TODO extract smarter. Check DOM parsing libs / XPATH expressions
+    # TODO extract smarter. Check DOM parsing libs / XPATH / CSS selector
     match = re.search('<div id="Definition"><section .*?>.*?<\/section>', content)
     if not match:
-        return
-    definition = match.group()
+        return return_obj
 
+    definition = match.group()
     # Remove citations, just to keep Anki cards terse
     definition = re.sub('<div class="cprh">.*?</div>', '', definition)
 
@@ -569,8 +586,8 @@ def search_thefreedictionary(term, *, lang):
     if match:
         ipa_str = '[' + match.group(1) + ']'
         definition = "\n".join([ipa_str, definition])
-
-    return definition
+    return_obj['definition'] = definition
+    return return_obj
 
 
 def get_card(id):
@@ -696,12 +713,17 @@ def main(deck):
     card_id = None
     wild_n = None
     back_n = None
+    suggestions = []
 
     while True:
         # Remind the user of any previous context, and then allow to Add
         if content:
             info_print()
             print(render(content, highlight=term, deck=deck))
+
+        if suggestions:
+            info_print("Did you mean:")
+            print("\n".join(suggestions))
 
         # spell-checker:disable
         menu = [
@@ -786,14 +808,12 @@ def main(deck):
                 card_ids = search_anki(term, deck=deck, field='back', wild=True)
                 render_cards(card_ids, term=term)
             elif term and key == 'f':
-                # TODO refactor out into a separate function
-                if deck == 'nl':
-                    content = search_woorden(term)
-                else:
-                    content = search_thefreedictionary(term, lang=deck)
-                if not content:
+                obj = search(term, lang=deck)
+                content = obj and obj.get('definition')
+                suggestions = obj and obj.get('suggestions') or []
+                if not obj or not content:
                     info_print("No results")
-                # content is printed on next iteration.
+                # If any, suggestions/content printed on next iteration.
             elif term and key == 'g':
                 search_google(term)
             elif not card_id and key == 'a':
@@ -812,13 +832,12 @@ def main(deck):
                 readline.add_history(term)
 
                 # auto fetch
-                # TODO refactor out into a separate function
-                if deck == 'nl':
-                    content = search_woorden(term)
-                else:
-                    content = search_thefreedictionary(term, lang=deck)
-                if not content:
+                obj = search(term, lang=deck)
+                content = obj and obj.get('definition')
+                suggestions = obj and obj.get('suggestions') or []
+                if not obj or not content:
                     info_print("No results")
+                # If any, suggestions/content printed on next iteration.
 
             elif key in ('s', '/'): # Exact match search
                 content = None
@@ -843,13 +862,13 @@ def main(deck):
                     if '*' in term:
                         continue
                     # Fetch
-                    # TODO refactor out into a separate function
-                    if deck == 'nl':
-                        content = search_woorden(term)
-                    else:
-                        content = search_thefreedictionary(term, lang=deck)
-                    if not content:
+                    obj = search(term, lang=deck)
+                    content = obj and obj.get('definition')
+                    suggestions = obj and obj.get('suggestions') or []
+                    if not obj or not content:
                         info_print("No results")
+                    # If any, suggestions/content printed on next iteration.
+
                     continue
                 # TODO bug, since we collapse double chars, this could have more than one result, eg 'maan'/'man'
                 # Factor out into eg render_cards()

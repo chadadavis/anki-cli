@@ -69,14 +69,6 @@ from nltk.stem.snowball import SnowballStemmer
 # Maybe copy out some things from render() that should be permanent into it's own def
 # And then update the card (like we did before to remove HTML from 'front')
 
-# Spellcheck/autocomplete/readline
-# 1st tab key press:
-#   Local anki search (wildcard on front field, prefix match),
-#     NB: deck-specific (needs a global var? for deck?)
-# 2nd TAB, then search online (only once?), FreeDictionary,
-#   NB: also lang-specific
-#   Once we have this, we can stop adding suggestions to history manually (cf readline.add_history_item)
-
 # Replace regex doc parsing with eg
 # https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
 # And use CSS selectors to extract content more robustly
@@ -716,12 +708,14 @@ def clear_screen():
 
 
 def main(deck):
-    term = None # term = input(f"Search: ") # Factor this into a function
+    global options
+    global suggestions
+    suggestions = []
+    term = None
     content = None
     card_id = None
     wild_n = None
     back_n = None
-    suggestions = []
 
     while True:
         # Remind the user of any previous context, and then allow to Add
@@ -731,9 +725,7 @@ def main(deck):
 
 
         if suggestions:
-            for s in suggestions:
-                readline.add_history(s)
-            info_print("Did you mean:")
+            info_print("Did you mean: (press TAB for autocomplete)")
             print("\n".join(suggestions))
 
         # spell-checker:disable
@@ -805,9 +797,13 @@ def main(deck):
                             deck = None
                     except:
                         clear_line()
+
                 card_id = None
                 wild_n = None
                 back_n = None
+
+                # This is so that `completer()` can know what lang/deck we're using
+                options.deck = deck
             elif key == 'y':
                 sync()
             elif card_id and key == 'd':
@@ -902,15 +898,41 @@ def main(deck):
 
 
 def completer(text: str, state: int) -> str:
-    options = []
+    completions = []
+    if not text:
+        return
+
+    # Unidecode allows accent-insensitive autocomplete
+    ud = unidecode.unidecode
+    text = ud(text)
+
+    # Completions via readline history
     for i in range(1, readline.get_current_history_length() + 1):
         i = readline.get_history_item(i)
-        if i.casefold().startswith(text.casefold()):
-            options += [ i ]
-    if state < len(options):
-        return options[state]
-    else:
-        return None
+        if ud(i).casefold().startswith(text.casefold()):
+            completions += [ i ]
+
+    # Completions via recent spellcheck suggestions (from last online fetch)
+    completions += [
+                    s for s in suggestions
+                    if ud(s).casefold().startswith(text.casefold())
+                    ]
+
+    # Autocomplete via prefix search in Anki (via local HTTP server)
+    if not completions:
+        global options
+        card_ids = search_anki(text + '*', deck=options.deck)
+        for card_id in card_ids:
+            term = get_card(card_id)['fields']['Front']['value']
+            if ud(term).casefold().startswith(text.casefold()):
+                completions += [ term ]
+
+    if state < len(completions):
+        return completions[state]
+
+    if state == 0:
+        # Beep, if the text doesn't match any possible completion
+        print("\a", end='', flush=True)
 
 
 if __name__ == "__main__":

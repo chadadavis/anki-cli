@@ -70,8 +70,16 @@ from nltk.stem.snowball import SnowballStemmer
 # And then update the card (like we did before to remove HTML from 'front')
 
 # Spellcheck/autocomplete/readline
-# First: Local anki search (wildcard on front field, prefix match), deck-specific (needs a global var?)
-# If two TABs, then search online (only once?), FreeDictionary, lang-specific, and add to/replace readline completion
+# 1st tab key press:
+#   Local anki search (wildcard on front field, prefix match),
+#     NB: deck-specific (needs a global var? for deck?)
+# 2nd TAB, then search online (only once?), FreeDictionary,
+#   NB: also lang-specific
+#   Once we have this, we can stop adding suggestions to history manually (cf readline.add_history_item)
+
+# Replace regex doc parsing with eg
+# https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
+# And use CSS selectors to extract content more robustly
 
 # Repo/Packaging:
 # figure out how to package deps (eg readchar) and test it again after removing local install of readchar
@@ -565,7 +573,7 @@ def search_thefreedictionary(term, *, lang):
             # Parse out spellcheck suggestions via CSS selector: .suggestions a
             soup = BeautifulSoup(content, 'html.parser')
             suggestions = [ r.text for r in soup.select('.suggestions a') ]
-            return_obj['suggestions'] = sorted(suggestions)
+            return_obj['suggestions'] = sorted(suggestions, key=str.casefold)
     except Exception as e:
         print("\n")
         info_print(e)
@@ -721,7 +729,10 @@ def main(deck):
             info_print()
             print(render(content, highlight=term, deck=deck))
 
+
         if suggestions:
+            for s in suggestions:
+                readline.add_history(s)
             info_print("Did you mean:")
             print("\n".join(suggestions))
 
@@ -784,6 +795,7 @@ def main(deck):
             elif key == '\x0c': # Ctrl-L clear screen
                 clear_screen()
             elif key == 'k':
+                # TODO refactor this out
                 deck = None
                 while not deck:
                     decks = get_deck_names()
@@ -889,6 +901,18 @@ def main(deck):
                 key = None
 
 
+def completer(text: str, state: int) -> str:
+    options = []
+    for i in range(1, readline.get_current_history_length() + 1):
+        i = readline.get_history_item(i)
+        if i.casefold().startswith(text.casefold()):
+            options += [ i ]
+    if state < len(options):
+        return options[state]
+    else:
+        return None
+
+
 if __name__ == "__main__":
     decks = get_deck_names()
     parser = OptionParser()
@@ -899,5 +923,8 @@ if __name__ == "__main__":
     if not options.deck:
         # Take the first deck by default; fail if there are none
         options.deck = decks[0]
+
+    readline.set_completer(completer)
+    readline.parse_and_bind("tab: complete")
 
     main(options.deck)

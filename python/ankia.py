@@ -794,6 +794,8 @@ def main(deck):
                     except:
                         clear_line()
                 card_id = None
+                wild_n = None
+                back_n = None
             elif key == 'y':
                 sync()
             elif card_id and key == 'd':

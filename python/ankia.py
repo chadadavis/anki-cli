@@ -729,6 +729,7 @@ def main(deck):
     card_id = None
     wild_n = None
     back_n = None
+    edits_n = 0
 
     while True:
         # Remind the user of any previous context, and then allow to Add
@@ -742,11 +743,12 @@ def main(deck):
             print("\n".join(suggestions))
 
         # spell-checker:disable
-        menu = [
-            "", "S[y]nc",
-            '|', f"Dec[k]: [{deck}]",
-        ]
+        menu = []
+        menu += [ "", "S[y]nc" ]
+        if edits_n:
+            menu += [ f"[*]" ]
 
+        menu += [ '|', f"Dec[k]: [{deck}]" ]
         if n_new := get_new(deck):
             menu += [ f"new:[{n_new}]"]
         if n_due := get_due(deck):
@@ -774,9 +776,9 @@ def main(deck):
 
             menu += ["|", "Card:"]
             if card_id:
-                menu = menu + [f"[{card_id}]", "[D]elete"]
+                menu += ["[D]elete"]
             else:
-                menu = menu + ["[A]dd"]
+                menu += ["[A]dd"]
 
         # spell-checker:enable
 
@@ -824,10 +826,12 @@ def main(deck):
                 options.deck = deck
             elif key == 'y':
                 sync()
+                edits_n = 0
             elif card_id and key == 'd':
                 delete_card(card_id)
                 card_id = None
-            elif term and key == 'r': # Open Anki browser, for the sake of delete/edit/etc
+                edits_n += 1
+            elif term and key == 'r': # Open Anki browser, for the sake of editing/custom searches
                 search_anki(term, deck=deck, browse=True)
             elif wild_n and key == 'w': # Search front with wildcard, or just search for *term*
                 card_ids = search_anki(term, deck=deck, wild=True)
@@ -847,6 +851,7 @@ def main(deck):
             elif not card_id and key == 'a':
                 card_id = add_card(term, content, deck=deck)
                 content = None
+                edits_n += 1
             elif empty_ids and key == 'e':
                 empty_ids = get_empties(deck)
                 card_id = empty_ids[0]
@@ -855,7 +860,7 @@ def main(deck):
                 card_id = None
                 wild_n  = None
                 back_n  = None
-
+                edits_n += 1
                 # Update readline, as if I had searched for this term
                 readline.add_history(term)
 
@@ -867,7 +872,7 @@ def main(deck):
                     info_print("No results")
                 # If any, suggestions/content printed on next iteration.
 
-            elif key in ('s', '/'): # Exact match search
+            elif key == 's': # Exact match search
                 content = None
 
                 # TODO factor the prompt of 'term' into a function?

@@ -36,38 +36,24 @@ from bs4 import BeautifulSoup
 from iso639 import languages # NB, the pip package is called iso-639 (with a -)
 from nltk.stem.snowball import SnowballStemmer
 
-# Backlog/TODOs
+# Backlog/TODO
 
 # BUG: no way to delete cards when multiple matches, eg search for wennen, or just any wildcard search
 # Could just process 'card_ids' the same way we already do for 'empty_ids', and get rid of `render_cards()`
 # And see if diff keys could control scrolling to the rest of this card or going to
 # the next card.
-
 # Maybe related BUG:
 # cant add card for stekken because it also matches existing card
 # steken (and then there's no option to add). So I have to delete and add in reverse order
+# anki add bug: cannot search / add passen because it finds Pasen first
 
-# TODO
-# pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
+# Terminal display - wrap
+# Apply the wrap also to fetched content, not just card content - generalize this and don't duplicate it.
+# TODO example term?
+# Terminal display - pager
+# Pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
 # https://stackoverflow.com/a/39587824/256856
 # https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
-
-# Stemming
-
-# Stemming for search?
-# Or add the inflected forms to the card? as a new field?
-# Most useful for langs that you don't know so well.
-# (because those matches would be more important than just matching in the desc somewhere)
-# Worst case, the online dictionary solves this anyway, so then I'll realize that I searched the wrong card.
-# So, it's just one extra manual search. Maybe not worth optimizing. But more interesting for highlighting.
-
-# Enable searching for plural forms on the back of cards:
-# Find/remove/update all cards that have a pipe char | in the Verbuigingen/Vervoegingen:
-# So that I can also search/find (not just highlight) eg bestek|ken without the pipe char
-# Search: back:*Ver*gingen:*|* => 2585 cards
-# Make a parser to grab and process it, like what's in the render() already, but then also replace it in the description.
-# Maybe copy out some things from render() that should be permanent into it's own def
-# And then update the card (like we did before to remove HTML from 'front')
 
 # Replace regex doc parsing with eg
 # https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
@@ -76,16 +62,22 @@ from nltk.stem.snowball import SnowballStemmer
 # Repo/Packaging:
 # figure out how to package deps (eg readchar) and test it again after removing local install of readchar
 
+# Stemming for search?
+# Or add the inflected forms to the card? as a new field?
+# Most useful for langs that you don't know so well.
+# (because those matches would be more important than just matching in the desc somewhere)
+# Worst case, the online dictionary solves this anyway, so then I'll realize that I searched the wrong card.
+# So, it's just one extra manual search. Maybe not worth optimizing. But more interesting for highlighting.
+# Enable searching for plural forms on the back of cards:
+# Find/remove/update all cards that have a pipe char | in the Verbuigingen/Vervoegingen:
+# So that I can also search/find (not just highlight) eg bestek|ken without the pipe char
+# Search: back:*Ver*gingen:*|* => 2585 cards
+# Make a parser to grab and process it, like what's in the render() already, but then also replace it in the description.
+# Maybe copy out some things from render() that should be permanent into it's own def
+# And then update the card (like we did before to remove HTML from 'front')
+
 # Logging:
-# look for log4j style console logging/printing (with colors)
-
-# UI:
-# Consider make a web UI, via an HTTP server running as an anki-addon? (like anki-connect)
-
-# anki: can I test if the deck has modifications since last sync, like anki droid
-# does. If not I could at least count any updates or adds or deletes done
-# (But this wouldn't tell me if I made any edits, since those are outside the scope)
-# Any API to query modifications since sync?
+# look for log4j style debug mode console logging/printing (with colors)
 
 ################################################################################
 
@@ -174,6 +166,7 @@ def render(string, *, highlight=None, front=None, deck=None):
         ,'\S+kunde'
         ,'\S+ologie'
         ,'algemeen'
+        ,'ambacht'
         ,'anatomie'
         ,'architectuur'
         ,'commercie'
@@ -496,6 +489,16 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     return card_ids
 
 
+def get_new(deck):
+    card_ids = invoke('findCards', query=f"deck:{deck} is:new")
+    return len(card_ids)
+
+
+def get_due(deck):
+    card_ids = invoke('findCards', query=f"deck:{deck} is:due")
+    return len(card_ids)
+
+
 def get_empties(deck):
     card_ids = search_anki('', deck=deck, field='back')
     return card_ids
@@ -609,6 +612,8 @@ def add_card(term, definition=None, *, deck):
         # NB, duplicate check (deck scope) enabled by default
         card_id = invoke('addNote', note=note)
     else:
+        # NB, this card_id won't exist if the user aborts the dialog.
+        # But, that's also handled by delete_card() if it should be called.
         card_id = invoke('guiAddCards', note=note)
     return card_id
 
@@ -631,12 +636,20 @@ def update_card(card_id, *, front=None, back=None):
 def card_to_note(card_id):
     # The notes-to-cards relation is 1-to-many.
     # So, each card has exactly 1 parent note.
-    note_id, = invoke('cardsToNotes', cards=[card_id])
+    # If the card doesn't exist, there's no parent.
+    # (That happens if you're adding a card in the GUI, but don't save it.)
+    note_ids = invoke('cardsToNotes', cards=[card_id])
+    if not note_ids:
+        return
+    note_id, = note_ids
     return note_id
 
 
 def delete_card(card_id):
     note_id = card_to_note(card_id)
+    if not note_id:
+        # This happens if the card wasn't saved when first being added.
+        return
     invoke('deleteNotes', notes=[note_id])
 
 
@@ -731,8 +744,13 @@ def main(deck):
         # spell-checker:disable
         menu = [
             "", "S[y]nc",
-            '|', f"Dec[k]: [{deck.upper()}]",
+            '|', f"Dec[k]: [{deck}]",
         ]
+
+        if n_new := get_new(deck):
+            menu += [ f"new:[{n_new}]"]
+        if n_due := get_due(deck):
+            menu += [ f"due:[{n_due}]"]
 
         # TODO instead of separate def for render_cards(), process them like a
         # queue, like we do here with empty_ids, so that we still have all the
@@ -948,5 +966,8 @@ if __name__ == "__main__":
 
     readline.set_completer(completer)
     readline.parse_and_bind("tab: complete")
+
+    # Set terminal title, to be able to search through windows
+    sys.stdout.write('\x1b]2;' + "Anki CLI card mgr" + '\x07')
 
     main(options.deck)

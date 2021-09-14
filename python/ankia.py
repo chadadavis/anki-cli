@@ -743,16 +743,24 @@ def main(deck):
             print("\n".join(suggestions))
 
         # spell-checker:disable
-        menu = []
-        menu += [ "", "S[y]nc" ]
+        menu = [ '' ]
+
+        if term:
+            menu += [ "Card:"]
+            if card_id:
+                menu += [ "[D]elete" ]
+            else:
+                menu += [ "[A]dd   " ]
+
+        menu += [ '|', "S[y]nc" ]
         if edits_n:
             menu += [ f"[*]" ]
 
         menu += [ '|', f"Dec[k]: [{deck}]" ]
         if n_new := get_new(deck):
-            menu += [ f"new:[{n_new}]"]
+            menu += [ f"new:[{n_new}]" ]
         if n_due := get_due(deck):
-            menu += [ f"due:[{n_due}]"]
+            menu += [ f"due:[{n_due}]" ]
 
         # TODO instead of separate def for render_cards(), process them like a
         # queue, like we do here with empty_ids, so that we still have all the
@@ -774,11 +782,6 @@ def main(deck):
                 back = f"[B]acks [{back_n}]"
                 menu += [back]
 
-            menu += ["|", "Card:"]
-            if card_id:
-                menu += ["[D]elete"]
-            else:
-                menu += ["[A]dd"]
 
         # spell-checker:enable
 

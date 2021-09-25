@@ -55,6 +55,11 @@ from nltk.stem.snowball import SnowballStemmer
 # https://stackoverflow.com/a/39587824/256856
 # https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
 
+# Anki: show the review status (due?) of the current card (as motivation to do reviews)
+# API: areDue(cards=[id1,id2]), or getIntervals() (is that when they're next due?)
+# This also seems to be part of the cardsInfo() response fields 'interval', and 'due' ?
+# what do the other fields mean 'ord' 'reps' 'lapses' (debug an example card?)
+
 # Replace regex doc parsing with eg
 # https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
 # And use CSS selectors to extract content more robustly
@@ -883,6 +888,13 @@ def main(deck):
                     term = input(f"Search: ")
                 except:
                     continue
+
+                # Allow to switch deck and search in one step, via a namespace-like search.
+                # e.g. 'nl:zien' would switch deck to 'nl' first, and then search for 'zien'
+                if match := re.match('(.*?):(.*)', term):
+                    deck = match.group(1)
+                    term = match.group(2)
+
                 card_ids = search_anki(term, deck=deck)
                 # Check other possible query types:
                 # TODO do all the searches (by try to minimise exact and wildcard into one request)

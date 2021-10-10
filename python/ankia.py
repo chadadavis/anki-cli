@@ -44,15 +44,6 @@ from nltk.stem.snowball import SnowballStemmer
 
 # Backlog/TODO
 
-# BUG: no way to delete cards when multiple matches, eg search for wennen, or just any wildcard search
-# Could just process 'card_ids' the same way we already do for 'empty_ids', and get rid of `render_cards()`
-# And see if diff keys could control scrolling to the rest of this card or going to
-# the next card.
-# Maybe related BUG:
-# cant add card for stekken because it also matches existing card
-# steken (and then there's no option to add). So I have to delete and add in reverse order
-# anki add bug: cannot search / add passen because it finds Pasen first
-
 # Terminal display - wrap
 # Apply the wrap also to fetched content, not just card content - generalize this and don't duplicate it.
 # TODO example term?
@@ -60,6 +51,9 @@ from nltk.stem.snowball import SnowballStemmer
 # Pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
 # https://stackoverflow.com/a/39587824/256856
 # https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
+
+# Anki add: any way to immediately review newly added card (by card_id?) so that
+# I don't have so many new/unseen cards?
 
 # Anki: show the review status (due?) of the current card (as motivation to do reviews)
 # API: areDue(cards=[id1,id2]), or getIntervals() (is that when they're next due?)
@@ -92,13 +86,32 @@ from nltk.stem.snowball import SnowballStemmer
 
 ################################################################################
 
-# Color codes: https://stackoverflow.com/a/33206814/256856
+# TODO consider colorama here?
+
+# Color codes:
+# The '1;' makes a foreground color bold/bright as well.
+# https://stackoverflow.com/a/33206814/256856
 YELLOW    = "\033[0;33m"
 LT_YELLOW = "\033[1;33m"
+GREEN     = "\033[0;32m"
+LT_GREEN  = "\033[1;32m"
+BLUE      = "\033[0;34m"
+LT_BLUE   = "\033[1;34m"
 RED       = "\033[0;31m"
-LT_RED    = "\033[1;31m" # the '1;' makes it bold as well
+LT_RED    = "\033[1;31m"
 GREY      = "\033[0;02m"
+LT_GREY   = "\033[1;02m"
+WHITE     = "\033[0;37m"
+LT_WHITE  = "\033[1;37m"
 PLAIN     = "\033[0;00m"
+
+# Abstract colors into use cases, in case we want to change the mapping later
+COLOR_COMMAND   = LT_WHITE
+COLOR_WARN      = LT_YELLOW
+COLOR_VALUE     = LT_BLUE
+COLOR_OK        = LT_GREEN
+COLOR_HIGHLIGHT = YELLOW
+# TODO update render() and info_print() to use these too
 
 LINE_WIDTH = os.get_terminal_size().columns
 WRAP_WIDTH = 100
@@ -174,8 +187,11 @@ def render(string, *, highlight=None, front=None, deck=None):
     # spell-checker:disable
     categories = [
         *[]
+        # These are just suffixes that mean "study of a(ny) field"
         ,'\S+kunde'
+        ,'\S+grafie'
         ,'\S+ologie'
+
         ,'algemeen'
         ,'ambacht'
         ,'anatomie'
@@ -682,7 +698,6 @@ def wrapper(string):
 
 
 def render_card(card, *, term=None):
-    info_print()
     f = card['fields']['Front']['value']
     b = card['fields']['Back']['value']
     deck = card['deckName']
@@ -690,12 +705,11 @@ def render_card(card, *, term=None):
     b_rendered = render(b, highlight=term, front=f, deck=deck)
     b_wrapped = wrapper(b_rendered)
 
-    # TODO refactor: return a string here
-    print(b_wrapped + "\n")
-
     if '<' in f or '&nbsp;' in f:
+        # TODO technically this should be a warn_print
         info_print("Warning: 'Front' field with HTML hinders exact match search.")
         # Auto-clean it?
+        # TODO: run across all decks (or refactor as a separate util function)
         # This is likley useless after cleaning all decks once.
         # As long as you continue to use this script to add cards.
         if True:
@@ -704,24 +718,9 @@ def render_card(card, *, term=None):
             update_card(card_id, front=cleaned)
             info_print(f"Updated to:")
             # Get again from Anki to verify updated card
-            render_card(get_card(card_id))
+            return render_card(get_card(card_id))
 
-
-def render_cards(card_ids, *, term=None):
-    c = -1
-    for card_id in card_ids:
-        # This is just for paginating results
-        c += 1
-        if c > 0:
-            print(f"{GREY}{c} of {len(card_ids)}{PLAIN} ", end='', flush=True)
-            key = readchar.readkey()
-            clear_line()
-            if key in KEYS_CLOSE:
-                break
-
-        card = get_card(card_id)
-        # TODO refactor: render_card should return a string
-        render_card(card, term=term)
+    return b_wrapped
 
 
 def sync():
@@ -740,84 +739,122 @@ def clear_screen():
 
 def main(deck):
     global options
-    global suggestions
-    suggestions = []
+
+    # The previous search term
     term = None
-    content = None
+
+    # The locally found card(s)
+    card_ids = []
+    card_ids_i = 0
     card_id = None
+
+    # Across the deck, the number(s) of wildcard matches on the front/back of other cards
     wild_n = None
     back_n = None
+
+    # The content/definition of the current (locally/remotely) found card
+    content = None
+
+    # Spell-scheck suggestions returned from the remote fetch/search?
+    global suggestions
+    suggestions = []
+
+    # Any local changes (new/deleted cards) pending sync?
     edits_n = 0
 
+    # The IDs of cards that only have a front, but not back (no definition)
+    # This works like a queue of cards to be deleted, fetched and (re)added.
+    # (Because it's easier to just delete and re-add than to update ? TODO)
+    empty_ids = get_empties(deck)
+
     while True:
+        # Set card_id and content based on card_ids and card_ids_i
+        if card_ids:
+            card_id = card_ids[card_ids_i]
+            card = get_card(card_id)
+            content = render_card(card)
+
         # Remind the user of any previous context, and then allow to Add
         if content:
-            info_print()
-            print(render(content, highlight=term, deck=deck))
+            # Clear the top of the screen
+            rendered = render(content, highlight=term, deck=deck)
+            lines_n = os.get_terminal_size().lines - len(re.findall("\n", rendered)) - 4
 
+            # TODO refactor this out into a scroll() def and call it also after changing deck
+            # With default being os.get_terminal_size().lines - 4 (or whatever lines up)
+            # And make the 4 a constant BORDERS_HEIGHT
+            info_print()
+            print("\n" * lines_n)
+
+            print(rendered)
 
         if suggestions:
             info_print("Did you mean: (press TAB for autocomplete)")
+            # TODO print blank lines before, via scroll
             print("\n".join(suggestions))
 
         # spell-checker:disable
         menu = [ '' ]
 
         if term:
-            menu += [ "Card:"]
-            if card_id:
-                menu += [ "[D]elete" ]
+            if not card_id:
+                menu += [ COLOR_WARN + "?" + PLAIN ]
+                menu += [ "(A)dd" ]
             else:
-                menu += [ "[A]dd   " ]
+                menu += [ COLOR_OK + "✓" + PLAIN]
+                menu += [ "(D)elete" ]
+                if len(card_ids) > 1:
+                    # Display in 1-based counting
+                    menu += [
+                        "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:2d}/{len(card_ids):2d}" + PLAIN,
+                    ]
 
-        menu += [ '|', "S[y]nc" ]
+        menu += [ '|' ]
+
+        menu += [ "Dec(k):" + COLOR_VALUE + deck + PLAIN]
         if edits_n:
-            menu += [ f"[*]" ]
+            menu += [ COLOR_WARN + "*" + PLAIN ]
 
-        menu += [ '|', f"Dec[k]: [{deck}]" ]
         if n_new := get_new(deck):
-            menu += [ f"new:[{n_new}]" ]
+            menu += [ "new:" + COLOR_VALUE + str(n_new) + PLAIN ]
         if n_due := get_due(deck):
-            menu += [ f"due:[{n_due}]" ]
+            menu += [ "due:" + COLOR_VALUE + str(n_due) + PLAIN ]
 
-        # TODO instead of separate def for render_cards(), process them like a
-        # queue, like we do here with empty_ids, so that we still have all the
-        # menu options, like delete a card when there are multiple matches, etc
-        # Apply this to card_ids as well.
-        # That will then also make it easier to then send each popped result through $PAGER .
-        empty_ids = get_empties(deck)
+        # TODO send each popped result through $PAGER .
+        # Rather, since it's just a Fetch, do the $PAGER for any Fetch
         if empty_ids:
-            menu += [f"[E]mpties [{len(empty_ids)}]"]
+            menu += [ "(E)mpties:" + COLOR_WARN + str(len(empty_ids)) + PLAIN ]
 
-        menu += ["|", "[S]earch:"]
+        menu += [ "|", "(S)earch" ]
         if term:
-            menu += [f"[{term}]", "B[r]owse", "[G]oogle", "[F]etch", ]
+            menu += [
+                COLOR_VALUE + term + PLAIN,
+                "B(r)owse", "(G)oogle", "(F)etch",
+            ]
 
             if wild_n:
-                wild = f"[W]ilds [{wild_n}]"
-                menu += [wild]
+                menu += [ f"(W)ilds:" + COLOR_VALUE + str(wild_n) + PLAIN ]
             if back_n:
-                back = f"[B]acks [{back_n}]"
-                menu += [back]
-
+                menu += [ f"(B)acks:" + COLOR_VALUE + str(back_n) + PLAIN ]
 
         # spell-checker:enable
 
         menu = ' '.join(menu)
-        menu = re.sub(r'\[', '[' + LT_YELLOW, menu)
-        menu = re.sub(r'\]', PLAIN + ']' , menu)
+        menu = re.sub(r'\(', COLOR_COMMAND, menu)
+        menu = re.sub(r'\)', PLAIN, menu)
 
         key = None
         while not key:
-            print('\r' + menu + '\r', end='', flush=True)
+            print(menu + (' ' * (LINE_WIDTH - len(menu))) + '\r', end='', flush=True)
             key = readchar.readkey()
-            # Clear the menu:
             clear_line()
-            # This works, but then the menu is always one a diff line.
             # Also, clearing the screen erases history, which isn't great.
             # clear_screen()
 
-            if key in (KEYS_CLOSE):
+            # TODO smarter way to clear relevant state vars ?
+            # What's the state machine behind all these?
+
+            if key in KEYS_CLOSE:
                 exit()
             elif key == '.':
                 # Reload (for 'live' editing / debugging)
@@ -825,9 +862,11 @@ def main(deck):
                 ts = "%04d-%02d-%02d %02d:%02d:%02d" % tl
                 info_print(f"pid: {os.getpid()} mtime: {ts} execv: {sys.argv[0]}")
                 os.execv(sys.argv[0], sys.argv)
-            elif key == '\x0c': # Ctrl-L clear screen
+            elif key == '\x0c':
+                # Ctrl-L clear screen
                 clear_screen()
             elif key == 'k':
+                # Switch decK
                 # TODO refactor this out
                 deck = None
                 while not deck:
@@ -839,46 +878,64 @@ def main(deck):
                     except:
                         clear_line()
 
-                card_id = None
-                wild_n = None
-                back_n = None
-
                 # This is so that `completer()` can know what lang/deck we're using
                 options.deck = deck
-            elif key == 'y':
+
+                card_id = None
+                card_ids = []
+                card_ids_i = 0
+                wild_n = None
+                back_n = None
+                empty_ids = get_empties(deck)
+                suggestions = []
+                content = None
+            elif key in ['y', '*']:
                 sync()
                 edits_n = 0
-            elif card_id and key == 'd':
+            elif key == 'd' and card_id:
                 delete_card(card_id)
                 card_id = None
+                card_ids = []
                 edits_n += 1
-            elif term and key == 'r': # Open Anki browser, for the sake of editing/custom searches
+            elif key == 'r' and term:
+                # Open Anki bRowser, for the sake of editing/custom searches
                 search_anki(term, deck=deck, browse=True)
-            elif wild_n and key == 'w': # Search front with wildcard, or just search for *term*
+            elif key == 'w' and wild_n:
+                # Search front with wildcard, or just search for *term*
                 card_ids = search_anki(term, deck=deck, wild=True)
-                render_cards(card_ids, term=term)
-            elif back_n and key == 'b': # Search back (with wildcard matching)
+                card_ids_i = 0
+            elif key == 'b' and back_n:
+                # Search back (with wildcard matching)
                 card_ids = search_anki(term, deck=deck, field='back', wild=True)
-                render_cards(card_ids, term=term)
-            elif term and key == 'f':
+                card_ids_i = 0
+            elif key == 'n' and card_ids_i < len(card_ids) - 1:
+                card_ids_i += 1
+            elif key == 'p' and card_ids_i > 0:
+                card_ids_i -= 1
+            elif key == 'f' and term:
+                # Fetch (remote dictionary service)
                 obj = search(term, lang=deck)
                 content = obj and obj.get('definition')
                 suggestions = obj and obj.get('suggestions') or []
                 if not obj or not content:
                     info_print("No results")
+                if content:
+                    card_id = None
+                    card_ids = []
                 # If any, suggestions/content printed on next iteration.
-            elif term and key == 'g':
+            elif key == 'g' and term:
                 search_google(term)
-            elif not card_id and key == 'a':
+            elif key == 'a' and not card_id:
                 card_id = add_card(term, content, deck=deck)
                 content = None
                 edits_n += 1
-            elif empty_ids and key == 'e':
-                empty_ids = get_empties(deck)
+            elif key == 'e' and empty_ids:
                 card_id = empty_ids[0]
                 term = get_card(card_id)['fields']['Front']['value']
                 delete_card(card_id)
+                empty_ids = get_empties(deck)
                 card_id = None
+                card_ids = []
                 wild_n  = None
                 back_n  = None
                 edits_n += 1
@@ -893,12 +950,14 @@ def main(deck):
                     info_print("No results")
                 # If any, suggestions/content printed on next iteration.
 
-            elif key == 's': # Exact match search
+            elif key == 's':
+                # Exact match search
                 content = None
+                suggestions = []
 
                 # TODO factor the prompt of 'term' into a function?
                 try:
-                    term = input(f"Search: ")
+                    term = input(f"Search ({COLOR_VALUE + deck + PLAIN}): ")
                 except:
                     continue
 
@@ -909,6 +968,7 @@ def main(deck):
                     term = match.group(2)
 
                 card_ids = search_anki(term, deck=deck)
+                card_ids_i = 0
                 # Check other possible query types:
                 # TODO do all the searches (by try to minimise exact and wildcard into one request)
                 # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
@@ -930,17 +990,6 @@ def main(deck):
                         info_print("No results")
                     # If any, suggestions/content printed on next iteration.
 
-                    continue
-                # TODO bug, since we collapse double chars, this could have more than one result, eg 'maan'/'man'
-                # Factor out into eg render_cards()
-                if len(card_ids) == 1:
-                    card_id, = card_ids
-                else:
-                    card_id = None
-                # card = get_card(card_id)
-                # TODO make render_card just return the rendered definition as string,
-                # save in 'content', let it print on next iteration
-                render_cards(card_ids, term=term)
             else:
                 # Unrecognized command. Beep.
                 print("\a", end='', flush=True)

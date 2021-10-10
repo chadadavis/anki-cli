@@ -21,7 +21,6 @@ add that card instead.
 import html
 import json
 import os
-import re
 import readline  # Not referenced, but used by input()
 import sys
 import textwrap
@@ -29,6 +28,13 @@ import time
 import urllib.parse
 import urllib.request
 from optparse import OptionParser
+
+# This override is necessary for wildcard searches, due to extra interpolation.
+# Otherwise 're' raises an exception. Search for 'regex' below.
+# https://learnbyexample.github.io/py_regular_expressions/gotchas.html
+# https://docs.python.org/3/library/re.html#re.sub
+# "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
+import regex as re
 
 import readchar
 import unidecode
@@ -277,8 +283,15 @@ def render(string, *, highlight=None, front=None, deck=None):
 
     # TODO refactor this out
     if highlight and deck:
-        highlight = re.sub(r'[.]', '\.', highlight)
-        highlight = re.sub(r'[_]', '.', highlight)
+        highlight = re.sub(r'[.]', r'\.', highlight)
+        highlight = re.sub(r'[_]', r'.', highlight)
+
+        # Even though this is a raw string, the '\' needs to be escaped, because
+        # the 're' module throws an exception for any escape sequences that are
+        # not valid in a standard string. (The 'regex' module doesn't.)
+        # https://learnbyexample.github.io/py_regular_expressions/gotchas.html
+        # https://docs.python.org/3/library/re.html#re.sub
+        # "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
         highlight = re.sub(r'[*]', r'\\w*', highlight)
 
         # Terms to highlight, in addition to the query term
@@ -311,7 +324,7 @@ def render(string, *, highlight=None, front=None, deck=None):
             # Hack stemming, assuming -en suffix
             # For cases: verb infinitives, or plural nouns without singular
             # eg ski-ën, hersen-en
-            highlights.add( re.sub(r'en$', '', front_or_highlight) )
+            highlights.add( re.sub(r'en$', r'\\S*', front_or_highlight) )
 
             # Find given inflections
 
@@ -335,7 +348,7 @@ def render(string, *, highlight=None, front=None, deck=None):
                 match = re.sub(r'\bzich\b', '', match)
 
                 # This is for descriptions with a placeholder char like:
-                # "kind - Verbuigingen: -eren" : "kinderen", or "'s" for "solo" => "solo's"
+                # "kind - Verbuigingen: -eren" : "kinderen", or "'s" for "homo" => "homo's"
                 match = re.sub(r"^[-'~]", front_or_highlight, match)
 
                 # plural nouns with multiple declensions, CSV

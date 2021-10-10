@@ -52,13 +52,7 @@ from nltk.stem.snowball import SnowballStemmer
 # https://stackoverflow.com/a/39587824/256856
 # https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
 
-# Anki add: any way to immediately review newly added card (by card_id?) so that
-# I don't have so many new/unseen cards?
-
-# Anki: show the review status (due?) of the current card (as motivation to do reviews)
-# API: areDue(cards=[id1,id2]), or getIntervals() (is that when they're next due?)
-# This also seems to be part of the cardsInfo() response fields 'interval', and 'due' ?
-# what do the other fields mean 'ord' 'reps' 'lapses' (debug an example card?)
+# And any way to left-indent all output to the console, globally?
 
 # Replace regex doc parsing with eg
 # https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
@@ -121,7 +115,8 @@ KEYS_CLOSE = ('q', '\x1b\x1b', '\x03', '\x04', '\x17')
 
 # NB, because the sync operation opens new windows, the window list keeps growing.
 # So, you can't use a static window id here. So, use the classname to get them all.
-MINIMIZER = 'for w in `xdotool search --classname "Anki"`; do xdotool windowminimize --sync $w; done'
+WINDOW_MIN =   'for w in `xdotool search --classname "Anki"`; do xdotool windowminimize --sync $w; done'
+WINDOW_RAISE = 'for w in `xdotool search --classname "Anki"`; do xdotool windowraise $w; done'
 
 def __launch_anki():
     """Try to launch Anki, if not already running, and verify launch.
@@ -135,7 +130,7 @@ def __launch_anki():
     BUG: The sleep 2 at the start seems needed because `MINIMIZER` succeeds
     because the app is running, but it hasn't finished creating the window yet?
     """
-    os.system(f'anki >/dev/null & for i in 1 2 3 4 5; do sleep 2; if {MINIMIZER}; then break; else echo Waiting ... $i; sleep 1; fi; done')
+    os.system(f'anki >/dev/null & for i in 1 2 3 4 5; do sleep 2; if {WINDOW_MIN}; then break; else echo Waiting ... $i; sleep 1; fi; done')
 
 
 def request(action, **params):
@@ -726,7 +721,7 @@ def render_card(card, *, term=None):
 def sync():
     invoke('sync')
     # And minimize it again
-    os.system(MINIMIZER)
+    os.system(WINDOW_MIN)
 
 
 def clear_line():
@@ -819,6 +814,8 @@ def main(deck):
             menu += [ "new:" + COLOR_VALUE + str(n_new) + PLAIN ]
         if n_due := get_due(deck):
             menu += [ "due:" + COLOR_VALUE + str(n_due) + PLAIN ]
+        if (n_new or n_due) and invoke('getNumCardsReviewedToday') == 0:
+            menu += [ f"Revie(w) " + COLOR_WARN + "!" + PLAIN ]
 
         # TODO send each popped result through $PAGER .
         # Rather, since it's just a Fetch, do the $PAGER for any Fetch
@@ -892,6 +889,9 @@ def main(deck):
             elif key in ['y', '*']:
                 sync()
                 edits_n = 0
+            elif key == 'w':
+                invoke('guiDeckReview', name=deck)
+                os.system(WINDOW_RAISE)
             elif key == 'd' and card_id:
                 delete_card(card_id)
                 card_id = None

@@ -815,7 +815,7 @@ def main(deck):
         if n_due := get_due(deck):
             menu += [ "due:" + COLOR_VALUE + str(n_due) + PLAIN ]
         if (n_new or n_due) and invoke('getNumCardsReviewedToday') == 0:
-            menu += [ f"Revie(w) " + COLOR_WARN + "!" + PLAIN ]
+            menu += [ f"(R)eview " + COLOR_WARN + "!" + PLAIN ]
 
         # TODO send each popped result through $PAGER .
         # Rather, since it's just a Fetch, do the $PAGER for any Fetch
@@ -826,7 +826,7 @@ def main(deck):
         if term:
             menu += [
                 COLOR_VALUE + term + PLAIN,
-                "B(r)owse", "(G)oogle", "(F)etch",
+                "(C)ards", "(G)oogle", "(F)etch",
             ]
 
             if wild_n:
@@ -850,6 +850,22 @@ def main(deck):
 
             # TODO smarter way to clear relevant state vars ?
             # What's the state machine behind all these?
+
+            # * Sync
+            # / Search
+            # A Add
+            # B (Search) Backs
+            # C (Cards) Browser/List/Cards/Anki
+            # D Delete/remove
+            # F Fetch / lookup / Definition / Query
+            # G Google
+            # K Deck
+            # N Next
+            # P Prev
+            # R Review
+            # S Search
+            # W Wildcards
+            # Y Sync
 
             if key in KEYS_CLOSE:
                 exit()
@@ -889,7 +905,7 @@ def main(deck):
             elif key in ['y', '*']:
                 sync()
                 edits_n = 0
-            elif key == 'w':
+            elif key == 'r':
                 invoke('guiDeckReview', name=deck)
                 os.system(WINDOW_RAISE)
             elif key == 'd' and card_id:
@@ -897,8 +913,8 @@ def main(deck):
                 card_id = None
                 card_ids = []
                 edits_n += 1
-            elif key == 'r' and term:
-                # Open Anki bRowser, for the sake of editing/custom searches
+            elif key == 'c' and term:
+                # Open Anki Card browser/list, for the sake of editing/custom searches
                 search_anki(term, deck=deck, browse=True)
             elif key == 'w' and wild_n:
                 # Search front with wildcard, or just search for *term*

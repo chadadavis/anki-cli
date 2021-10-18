@@ -108,7 +108,7 @@ COLOR_HIGHLIGHT = YELLOW
 # TODO update render() and info_print() to use these too
 
 LINE_WIDTH = os.get_terminal_size().columns
-WRAP_WIDTH = 100
+WRAP_WIDTH = LINE_WIDTH // 2
 
 # q, ESC-ESC, Ctrl-C, Ctrl-D, Ctrl-W
 KEYS_CLOSE = ('q', '\x1b\x1b', '\x03', '\x04', '\x17')
@@ -760,7 +760,7 @@ def main(deck):
     # The IDs of cards that only have a front, but not back (no definition)
     # This works like a queue of cards to be deleted, fetched and (re)added.
     # (Because it's easier to just delete and re-add than to update ? TODO)
-    empty_ids = get_empties(deck)
+    empty_ids = []
 
     while True:
         # Set card_id and content based on card_ids and card_ids_i
@@ -819,7 +819,7 @@ def main(deck):
 
         # TODO send each popped result through $PAGER .
         # Rather, since it's just a Fetch, do the $PAGER for any Fetch
-        if empty_ids:
+        if empty_ids := get_empties(deck):
             menu += [ "(E)mpties:" + COLOR_WARN + str(len(empty_ids)) + PLAIN ]
 
         menu += [ "|", "(S)earch" ]
@@ -842,11 +842,9 @@ def main(deck):
 
         key = None
         while not key:
-            print(menu + (' ' * (LINE_WIDTH - len(menu))) + '\r', end='', flush=True)
-            key = readchar.readkey()
             clear_line()
-            # Also, clearing the screen erases history, which isn't great.
-            # clear_screen()
+            print(menu + '\r', end='', flush=True)
+            key = readchar.readkey()
 
             # TODO smarter way to clear relevant state vars ?
             # What's the state machine behind all these?
@@ -1009,8 +1007,6 @@ def main(deck):
             else:
                 # Unrecognized command. Beep.
                 print("\a", end='', flush=True)
-                # Repeat input
-                key = None
 
 
 def completer(text: str, state: int) -> str:

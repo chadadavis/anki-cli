@@ -869,6 +869,7 @@ def main(deck):
             # Y Sync
 
             if key in KEYS_CLOSE:
+                clear_line()
                 exit()
             elif key == '.':
                 # Reload (for 'live' editing / debugging)
@@ -973,6 +974,7 @@ def main(deck):
                 suggestions = []
 
                 # TODO factor the prompt of 'term' into a function?
+                clear_line()
                 try:
                     term = input(f"Search ({COLOR_VALUE + deck + PLAIN}): ")
                 except:

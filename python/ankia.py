@@ -762,6 +762,9 @@ def main(deck):
     # (Because it's easier to just delete and re-add than to update ? TODO)
     empty_ids = []
 
+    # Clear/Scroll screen (we scroll here because 'clear' would erase history)
+    # TODO consider switching to curses lib
+    print("\n" * os.get_terminal_size().lines)
     while True:
         # Set card_id and content based on card_ids and card_ids_i
         if card_ids:

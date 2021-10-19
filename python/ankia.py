@@ -884,6 +884,7 @@ def main(deck):
                 # Switch decK
                 # TODO refactor this out
                 deck = None
+                clear_line()
                 while not deck:
                     decks = get_deck_names()
                     try:

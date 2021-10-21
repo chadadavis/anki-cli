@@ -111,7 +111,7 @@ LINE_WIDTH = os.get_terminal_size().columns
 WRAP_WIDTH = LINE_WIDTH // 2
 
 # q, ESC-ESC, Ctrl-C, Ctrl-D, Ctrl-W
-KEYS_CLOSE = ('q', '\x1b\x1b', '\x03', '\x04', '\x17')
+KEYS_CLOSE = ('q', 'x', '\x1b\x1b', '\x03', '\x04', '\x17')
 
 # NB, because the sync operation opens new windows, the window list keeps growing.
 # So, you can't use a static window id here. So, use the classname to get them all.
@@ -812,6 +812,8 @@ def main(deck):
         menu += [ "Dec(k):" + COLOR_VALUE + deck + PLAIN]
         if edits_n:
             menu += [ COLOR_WARN + "*" + PLAIN ]
+        else:
+            menu += [ ' ' ]
 
         if n_new := get_new(deck):
             menu += [ "new:" + COLOR_VALUE + str(n_new) + PLAIN ]

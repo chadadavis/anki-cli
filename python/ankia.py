@@ -797,7 +797,7 @@ def main(deck):
         if term:
             if not card_id:
                 menu += [ COLOR_WARN + "?" + PLAIN ]
-                menu += [ "(A)dd" ]
+                menu += [ "(A)dd   " ]
             else:
                 menu += [ COLOR_OK + "✓" + PLAIN]
                 menu += [ "(D)elete" ]

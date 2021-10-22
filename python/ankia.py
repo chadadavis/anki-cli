@@ -899,12 +899,12 @@ def main(deck):
                 # This is so that `completer()` can know what lang/deck we're using
                 options.deck = deck
 
+                term = None
                 card_id = None
                 card_ids = []
                 card_ids_i = 0
                 wild_n = None
                 back_n = None
-                empty_ids = get_empties(deck)
                 suggestions = []
                 content = None
             elif key in ['y', '*']:

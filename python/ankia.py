@@ -794,7 +794,9 @@ def main(deck):
         # spell-checker:disable
         menu = [ '' ]
 
-        if term:
+        if not term:
+            menu += [ "        " ]
+        else:
             if not card_id:
                 menu += [ COLOR_WARN + "?" + PLAIN ]
                 menu += [ "(A)dd   " ]
@@ -808,7 +810,6 @@ def main(deck):
                     ]
 
         menu += [ '|' ]
-
         menu += [ "Dec(k):" + COLOR_VALUE + deck + PLAIN]
         if edits_n:
             menu += [ COLOR_WARN + "*" + PLAIN ]

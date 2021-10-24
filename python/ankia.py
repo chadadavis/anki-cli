@@ -984,6 +984,8 @@ def main(deck):
                     term = input(f"Search ({COLOR_VALUE + deck + PLAIN}): ")
                 except:
                     continue
+                if not term:
+                    continue
 
                 # Allow to switch deck and search in one step, via a namespace-like search.
                 # e.g. 'nl:zien' would switch deck to 'nl' first, and then search for 'zien'

@@ -765,6 +765,7 @@ def main(deck):
     # Clear/Scroll screen (we scroll here because 'clear' would erase history)
     # TODO consider switching to curses lib
     print("\n" * os.get_terminal_size().lines)
+
     while True:
         # Set card_id and content based on card_ids and card_ids_i
         if card_ids:
@@ -785,6 +786,9 @@ def main(deck):
             print("\n" * lines_n)
 
             print(rendered)
+
+        if term and not content:
+            info_print("No results: " + term)
 
         if suggestions:
             info_print("Did you mean: (press TAB for autocomplete)")
@@ -939,8 +943,6 @@ def main(deck):
                 obj = search(term, lang=deck)
                 content = obj and obj.get('definition')
                 suggestions = obj and obj.get('suggestions') or []
-                if not obj or not content:
-                    info_print("No results")
                 if content:
                     card_id = None
                     card_ids = []
@@ -965,11 +967,10 @@ def main(deck):
                 readline.add_history(term)
 
                 # auto fetch
+                clear_line()
                 obj = search(term, lang=deck)
                 content = obj and obj.get('definition')
                 suggestions = obj and obj.get('suggestions') or []
-                if not obj or not content:
-                    info_print("No results")
                 # If any, suggestions/content printed on next iteration.
 
             elif key == 's':
@@ -999,7 +1000,6 @@ def main(deck):
                 wild_n = len(set(search_anki(term, deck=deck, wild=True)) - set(card_ids))
                 back_n = len(search_anki(term, deck=deck, wild=True, field='back'))
                 if not card_ids:
-                    print(f"{RED}No exact match\n{PLAIN}")
                     card_id = None
                     content = None
 
@@ -1009,8 +1009,6 @@ def main(deck):
                     obj = search(term, lang=deck)
                     content = obj and obj.get('definition')
                     suggestions = obj and obj.get('suggestions') or []
-                    if not obj or not content:
-                        info_print("No results")
                     # If any, suggestions/content printed on next iteration.
 
             else:

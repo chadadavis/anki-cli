@@ -149,8 +149,10 @@ def invoke(action, **params):
     try:
         response = json.load(urllib.request.urlopen(req))
         if response['error'] is not None:
-            raise Exception(response['error'])
-        return response['result']
+            info_print('error: ', response['error'])
+            return None
+        else:
+            return response['result']
     except (ConnectionRefusedError, urllib.error.URLError) as e:
         print(""""
             Failed to connect to Anki. Make sure that Anki is running, and using the anki_connect addon.
@@ -629,6 +631,7 @@ def get_card(id):
 
 
 def add_card(term, definition=None, *, deck):
+    """Create a new Note. (If you want the card_id, do another search for it)"""
 
     note = {
         'deckName': deck,
@@ -639,12 +642,11 @@ def add_card(term, definition=None, *, deck):
     if definition:
         note['fields']['Back'] = definition
         # NB, duplicate check (deck scope) enabled by default
-        card_id = invoke('addNote', note=note)
+        note_id = invoke('addNote', note=note)
     else:
         # NB, this card_id won't exist if the user aborts the dialog.
         # But, that's also handled by delete_card() if it should be called.
-        card_id = invoke('guiAddCards', note=note)
-    return card_id
+        note_id = invoke('guiAddCards', note=note)
 
 
 def update_card(card_id, *, front=None, back=None):
@@ -670,6 +672,7 @@ def card_to_note(card_id):
     note_ids = invoke('cardsToNotes', cards=[card_id])
     if not note_ids:
         return
+
     note_id, = note_ids
     return note_id
 
@@ -678,8 +681,12 @@ def delete_card(card_id):
     note_id = card_to_note(card_id)
     if not note_id:
         # This happens if the card wasn't saved when first being added.
-        return
+        # So, the note_id that we were given no longer exists
+        return None
+
+    # This unfortunately doesn't return any success code
     invoke('deleteNotes', notes=[note_id])
+    return True
 
 
 def wrapper(string):
@@ -732,6 +739,14 @@ def clear_screen():
     print('\033c')
 
 
+def scroll_screen():
+    print("\n" * os.get_terminal_size().lines)
+
+
+def beep():
+    print("\a", end='', flush=True)
+
+
 def main(deck):
     global options
 
@@ -764,7 +779,7 @@ def main(deck):
 
     # Clear/Scroll screen (we scroll here because 'clear' would erase history)
     # TODO consider switching to curses lib
-    print("\n" * os.get_terminal_size().lines)
+    scroll_screen()
 
     while True:
         # Set card_id and content based on card_ids and card_ids_i
@@ -772,13 +787,16 @@ def main(deck):
             card_id = card_ids[card_ids_i]
             card = get_card(card_id)
             content = render_card(card)
+        else:
+            card_id = None
 
         # Remind the user of any previous context, and then allow to Add
         if content:
             # Clear the top of the screen
+            # But ensure that it lines up, so that PgUp and PgDown on the terminal work one-def-at-a-time
+            # TODO refactor this into scroll_screen
             rendered = render(content, highlight=term, deck=deck)
             lines_n = os.get_terminal_size().lines - len(re.findall("\n", rendered)) - 4
-
             # TODO refactor this out into a scroll() def and call it also after changing deck
             # With default being os.get_terminal_size().lines - 4 (or whatever lines up)
             # And make the 4 a constant BORDERS_HEIGHT
@@ -857,7 +875,7 @@ def main(deck):
             key = readchar.readkey()
 
             # TODO smarter way to clear relevant state vars ?
-            # What's the state machine behind all these?
+            # What's the state machine/diagram behind all these?
 
             # * Sync
             # / Search
@@ -912,6 +930,7 @@ def main(deck):
                 back_n = None
                 suggestions = []
                 content = None
+                scroll_screen()
             elif key in ['y', '*']:
                 sync()
                 edits_n = 0
@@ -919,10 +938,13 @@ def main(deck):
                 invoke('guiDeckReview', name=deck)
                 os.system(WINDOW_RAISE)
             elif key == 'd' and card_id:
-                delete_card(card_id)
-                card_id = None
-                card_ids = []
-                edits_n += 1
+                if delete_card(card_id):
+                    edits_n += 1
+                    del card_ids[card_ids_i]
+                    content = None
+                    scroll_screen()
+                else:
+                    beep()
             elif key == 'c' and term:
                 # Open Anki Card browser/list, for the sake of editing/custom searches
                 search_anki(term, deck=deck, browse=True)
@@ -950,9 +972,12 @@ def main(deck):
             elif key == 'g' and term:
                 search_google(term)
             elif key == 'a' and not card_id:
-                card_id = add_card(term, content, deck=deck)
-                content = None
+                add_card(term, content, deck=deck)
                 edits_n += 1
+
+                # And search it to verify
+                card_ids = search_anki(term, deck=deck)
+                card_ids_i = 0
             elif key == 'e' and empty_ids:
                 card_id = empty_ids[0]
                 term = get_card(card_id)['fields']['Front']['value']
@@ -1014,7 +1039,7 @@ def main(deck):
                     # If any, suggestions/content printed on next iteration.
 
             else:
-                # Unrecognized command. Beep.
+                # Unrecognized command. 
                 print("\a", end='', flush=True)
 
 
@@ -1052,8 +1077,8 @@ def completer(text: str, state: int) -> str:
         return completions[state]
 
     if state == 0:
-        # Beep, if the text doesn't match any possible completion
-        print("\a", end='', flush=True)
+        # text doesn't match any possible completion
+        beep()
 
 
 if __name__ == "__main__":

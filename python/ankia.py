@@ -107,9 +107,6 @@ COLOR_OK        = LT_GREEN
 COLOR_HIGHLIGHT = YELLOW
 # TODO update render() and info_print() to use these too
 
-LINE_WIDTH = os.get_terminal_size().columns
-WRAP_WIDTH = LINE_WIDTH // 2
-
 # q, ESC-ESC, Ctrl-C, Ctrl-D, Ctrl-W
 KEYS_CLOSE = ('q', 'x', '\x1b\x1b', '\x03', '\x04', '\x17')
 
@@ -537,6 +534,8 @@ def get_empties(deck):
 
 def info_print(*values):
     # TODO Use colorama
+    LINE_WIDTH = os.get_terminal_size().columns
+
     print(GREY, end='')
     print('_' * LINE_WIDTH)
     print(*values)
@@ -690,6 +689,9 @@ def delete_card(card_id):
 
 
 def wrapper(string):
+    LINE_WIDTH = os.get_terminal_size().columns
+    WRAP_WIDTH = LINE_WIDTH // 2
+
     lines_wrapped = []
     for line in string.splitlines():
         line_wrap = textwrap.wrap(line, WRAP_WIDTH, replace_whitespace=False, drop_whitespace=False)
@@ -732,6 +734,7 @@ def sync():
 
 
 def clear_line():
+    LINE_WIDTH = os.get_terminal_size().columns
     print('\r' + (' ' * LINE_WIDTH) + '\r', end='', flush='True')
 
 

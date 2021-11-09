@@ -44,15 +44,13 @@ from nltk.stem.snowball import SnowballStemmer
 
 # Backlog/TODO
 
-# Terminal display - wrap
-# Apply the wrap also to fetched content, not just card content - generalize this and don't duplicate it.
-# TODO example term?
 # Terminal display - pager
 # Pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
 # https://stackoverflow.com/a/39587824/256856
 # https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
 
-# And any way to left-indent all output to the console, globally?
+# And any way to left-indent all output to the console, globally (eg 2-4 chars, because window borders, etc)
+# Maybe also via textwrap ?
 
 # Replace regex doc parsing with eg
 # https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
@@ -707,7 +705,6 @@ def render_card(card, *, term=None):
     deck = card['deckName']
 
     b_rendered = render(b, highlight=term, front=f, deck=deck)
-    b_wrapped = wrapper(b_rendered)
 
     if '<' in f or '&nbsp;' in f:
         # TODO technically this should be a warn_print
@@ -724,7 +721,7 @@ def render_card(card, *, term=None):
             # Get again from Anki to verify updated card
             return render_card(get_card(card_id))
 
-    return b_wrapped
+    return b_rendered
 
 
 def sync():
@@ -799,14 +796,15 @@ def main(deck):
             # But ensure that it lines up, so that PgUp and PgDown on the terminal work one-def-at-a-time
             # TODO refactor this into scroll_screen
             rendered = render(content, highlight=term, deck=deck)
-            lines_n = os.get_terminal_size().lines - len(re.findall("\n", rendered)) - 4
+            rendered = wrapper(rendered)
+            lines_n = os.get_terminal_size().lines - len(re.findall("\n", rendered))
             # TODO refactor this out into a scroll() def and call it also after changing deck
             # With default being os.get_terminal_size().lines - 4 (or whatever lines up)
             # And make the 4 a constant BORDERS_HEIGHT
             info_print()
             print("\n" * lines_n)
 
-            print(rendered)
+            print(rendered, "\n")
 
         if term and not content:
             info_print("No results: " + term)

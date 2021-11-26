@@ -52,6 +52,12 @@ from nltk.stem.snowball import SnowballStemmer
 # And any way to left-indent all output to the console, globally (eg 2-4 chars, because window borders, etc)
 # Maybe also via textwrap ?
 
+# Use freeDictionary API, so as to need less regex parsing
+# https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
+
+# Add nl-specific etymology?
+# https://etymologiebank.nl/
+
 # Replace regex doc parsing with eg
 # https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
 # And use CSS selectors to extract content more robustly

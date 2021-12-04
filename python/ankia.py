@@ -809,27 +809,25 @@ def main(deck):
             card_id = None
 
         # Remind the user of any previous context, and then allow to Add
-        if content:
-            # Clear the top of the screen
-            # But ensure that it lines up, so that PgUp and PgDown on the terminal work one-def-at-a-time
-            # TODO refactor this into scroll_screen
-            rendered = render(content, highlight=term, deck=deck)
-            rendered = wrapper(rendered)
-            lines_n = os.get_terminal_size().lines - len(re.findall("\n", rendered))
-            # TODO refactor this out into a scroll() def and call it also after changing deck
-            # With default being os.get_terminal_size().lines - 4 (or whatever lines up)
-            # And make the 4 a constant BORDERS_HEIGHT
-            info_print()
-            print("\n" * lines_n)
-
-            print(rendered, "\n")
+        content = content or ''
+        # Clear the top of the screen
+        # But ensure that it lines up, so that PgUp and PgDown on the terminal work one-def-at-a-time
+        # TODO refactor this into scroll_screen
+        rendered = render(content, highlight=term, deck=deck)
+        rendered = wrapper(rendered)
+        lines_n = os.get_terminal_size().lines - len(re.findall("\n", rendered))
+        # TODO refactor this out into a scroll() def and call it also after changing deck
+        # With default being os.get_terminal_size().lines - 4 (or whatever lines up)
+        # And make the 4 a constant BORDERS_HEIGHT
+        info_print()
+        print("\n" * lines_n)
+        print(rendered, "\n")
 
         if term and not content:
             info_print("No results: " + term)
 
         if suggestions:
             info_print("Did you mean: (press TAB for autocomplete)")
-            # TODO print blank lines before, via scroll
             print("\n".join(suggestions))
 
         # spell-checker:disable

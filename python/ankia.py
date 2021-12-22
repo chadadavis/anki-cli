@@ -1,21 +1,22 @@
 #!/usr/bin/env python
-"""Anki add - fetch one definitions and add new cards to Anki language decks
+"""Anki add - fetch online definitions and add new cards to Anki vocabulary
+decks
 
-A note one searching for declined / conjugated forms of words:
+A note on searching for declined / conjugated forms of words:
 
 It would be nice to confirm that the content fetched corresponds to the term
 searched, rather than a declined form. However, each dictionary provider does
 this differently, and not even consistently within a given language, as it may
 depend on the part of speech of the term. So, the user simply needs to be beware
 that if the definition shows a different canonical form, then they should
-re-search for the canonical form, and then add that term instead. This should be
-clearly visible, because the search term, if present, will be highlighted in the
-displayed text.
+re-search for the canonical form, and then add that term instead. (This should
+be clearly visible if this has happened, because the search term, if present,
+will be highlighted in the displayed text.)
 
 For example, in Dutch searching for 'geoormerkt' (a past participle) will return
 the definition for 'oormerken' (the infinitive). In that case, you'd rather not
-add that card, but rather re-search for 'oormerken', now that you know it, and
-add that card instead.
+add that card, but rather re-search for 'oormerken', now that you know what the
+base form is, and add that card instead.
 
 """
 import html
@@ -43,6 +44,8 @@ from iso639 import languages # NB, the pip package is called iso-639 (with a -)
 from nltk.stem.snowball import SnowballStemmer
 
 # Backlog/TODO
+
+# TODO allow to SIGINT / Ctrl-C during external lookup.
 
 # Terminal display - pager
 # Pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
@@ -559,6 +562,7 @@ def search_google(term):
 def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     query_term = urllib.parse.quote(term) # For web searches
     url = url + query_term
+    clear_line()
     print(GREY + f"Fetching: {url} ..." + PLAIN, end='', flush=True)
 
     content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
@@ -591,6 +595,7 @@ def search_thefreedictionary(term, *, lang):
         return
     query_term = urllib.parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
+    clear_line()
     print(GREY + f"Fetching: {url} ..." + PLAIN, end='', flush=True)
     try:
         response = urllib.request.urlopen(urllib.request.Request(url))

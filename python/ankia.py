@@ -565,7 +565,14 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     clear_line()
     print(GREY + f"Fetching: {url} ..." + PLAIN, end='', flush=True)
 
-    content = urllib.request.urlopen(urllib.request.Request(url)).read().decode('utf-8')
+    try:
+        response = urllib.request.urlopen(urllib.request.Request(url))
+        content = response.read().decode('utf-8')
+    except (Exception, KeyboardInterrupt) as e:
+        print("\n")
+        info_print(e)
+        return
+
     clear_line()
 
     # Pages in different formats, for testing:
@@ -608,7 +615,7 @@ def search_thefreedictionary(term, *, lang):
             soup = BeautifulSoup(content, 'html.parser')
             suggestions = [ r.text for r in soup.select('.suggestions a') ]
             return_obj['suggestions'] = sorted(suggestions, key=str.casefold)
-    except Exception as e:
+    except (Exception, KeyboardInterrupt) as e:
         print("\n")
         info_print(e)
         return

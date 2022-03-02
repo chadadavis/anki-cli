@@ -190,8 +190,9 @@ def render(string, *, highlight=None, front=None, deck=None):
         *[]
         # These are just suffixes that mean "study of a(ny) field"
         ,'\S+kunde'
-        ,'\S+grafie'
+        ,'\S+ografie'
         ,'\S+ologie'
+        ,'\S+onomie'
 
         ,'algemeen'
         ,'ambacht'

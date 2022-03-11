@@ -897,19 +897,19 @@ def main(deck):
 
             # * Sync
             # / Search
-            # A Add
-            # B (Search) Backs
-            # C (Cards) Browser/List/Cards/Anki
-            # D Delete/remove
-            # F Fetch / lookup / Definition / Query
-            # G Google
-            # K Deck
-            # N Next
-            # P Prev
-            # R Review
-            # S Search
-            # W Wildcards
-            # Y Sync
+            # a Add
+            # b (Search) Backs
+            # c (Cards) Browser/List/Cards/Anki
+            # d Delete/remove
+            # f Fetch / lookup / Definition / Query
+            # g Google
+            # k Deck
+            # n Next
+            # p Prev / Shift-n
+            # r Review
+            # s Search
+            # w Wildcards
+            # y Sync
 
             if key in KEYS_CLOSE:
                 clear_line()
@@ -974,9 +974,9 @@ def main(deck):
                 # Search back (with wildcard matching)
                 card_ids = search_anki(term, deck=deck, field='back', wild=True)
                 card_ids_i = 0
-            elif key == 'n' and card_ids_i < len(card_ids) - 1:
+            elif key in ('n') and card_ids_i < len(card_ids) - 1:
                 card_ids_i += 1
-            elif key == 'p' and card_ids_i > 0:
+            elif key in ('p', 'N') and card_ids_i > 0:
                 card_ids_i -= 1
             elif key == 'f' and term:
                 # Fetch (remote dictionary service)

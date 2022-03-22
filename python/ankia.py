@@ -1027,8 +1027,9 @@ def main(deck):
                 suggestions = obj and obj.get('suggestions') or []
                 # If any, suggestions/content printed on next iteration.
 
-            elif key == 's':
+            elif key in ('s', '\x10'):
                 # Exact match search
+                # The \x10 is Ctrl-P which is readline muscle memory for 'previous' line
                 content = None
                 suggestions = []
 

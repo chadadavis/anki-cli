@@ -969,6 +969,7 @@ def main(deck):
                 if delete_card(card_id):
                     edits_n += 1
                     del card_ids[card_ids_i]
+                    card_ids_i = max(0, card_ids_i - 1)
                     content = None
                     scroll_screen()
                 else:

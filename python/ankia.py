@@ -531,6 +531,7 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
         card_ids = invoke('guiBrowse', query=query)
     else:
         card_ids = invoke('findCards', query=query)
+        card_ids = card_ids or []
     return card_ids
 
 
@@ -1036,14 +1037,15 @@ def main(deck):
                     term = input(f"Search ({COLOR_VALUE + deck + PLAIN}): ")
                 except:
                     continue
+                term = term.strip()
                 if not term:
                     continue
 
                 # Allow to switch deck and search in one step, via a namespace-like search.
                 # e.g. 'nl:zien' would switch deck to 'nl' first, and then search for 'zien'
-                if match := re.match('(.*?):(.*)', term):
-                    deck = match.group(1)
-                    term = match.group(2)
+                decks_re = '|'.join(decks := get_deck_names())
+                if match := re.match(f'\s*({decks_re})\s*:\s*(.*)', term):
+                    deck, term = match.groups()
 
                 card_ids = search_anki(term, deck=deck)
                 card_ids_i = 0

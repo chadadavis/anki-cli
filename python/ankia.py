@@ -82,6 +82,15 @@ from nltk.stem.snowball import SnowballStemmer
 # Maybe copy out some things from render() that should be permanent into it's own def
 # And then update the card (like we did before to remove HTML from 'front')
 
+# TODO
+# Think about how to add multiples webservices for a single deck/lang (?)
+# Eg beyond a dictionary, what about extra (web) services for:
+# synonyms, pronunciation, etymology, etc, or just allowing for multiple search providers
+# Maybe just:
+# { lang: en, dict: dictionary.com, syn/thes: somesynservice.com, ipa: some ipa service, etym: etymonline.com, ...}
+#
+# And maybe later think about how to combine/concat these also to the same anki card ...
+
 # Logging:
 # look for log4j style debug mode console logging/printing (with colors)
 

@@ -45,6 +45,12 @@ from nltk.stem.snowball import SnowballStemmer
 
 # Backlog/TODO
 
+# Consider alternative addons for Anki:
+# https://ankiweb.net/shared/info/1807206748
+# https://github.com/finalion/WordQuery
+# All addons:
+# https://ankiweb.net/shared/addons/
+
 # TODO allow to SIGINT / Ctrl-C during external lookup.
 
 # Terminal display - pager
@@ -505,6 +511,8 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     # It should be possible with Anki's non-combining mode: nc:geëxploiteerd
     # https://docs.ankiweb.net/#/searching
     # But doesn't seem to work
+    # Or see how it's being done inside this addon:
+    # https://ankiweb.net/shared/info/1924690148
 
     # Collapse double letters into a disjunction, eg: (NL-specific)
     # This implies that the user should, when in doubt, use double chars in the query

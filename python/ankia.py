@@ -801,6 +801,7 @@ def main(deck):
 
     # The content/definition of the current (locally/remotely) found card
     content = None
+    menu = ''
 
     # Spell-scheck suggestions returned from the remote fetch/search?
     global suggestions
@@ -853,6 +854,8 @@ def main(deck):
         if suggestions:
             info_print("Did you mean: (press TAB for autocomplete)")
             print("\n".join(suggestions))
+
+        print(menu + '\r', end='', flush=True)
 
         # spell-checker:disable
         menu = [ '' ]

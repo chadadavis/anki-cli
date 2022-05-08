@@ -1062,8 +1062,10 @@ def main(deck):
                 # Allow to switch deck and search in one step, via a namespace-like search.
                 # e.g. 'nl:zien' would switch deck to 'nl' first, and then search for 'zien'
                 decks_re = '|'.join(decks := get_deck_names())
-                if match := re.match(f'\s*({decks_re})\s*:\s*(.*)', term):
-                    deck, term = match.groups()
+                if match := re.match('\s*([a-z]{2})\s*:\s*(.*)', term):
+                    lang, term = match.groups()
+                    if re.match(f'({decks_re})', lang):
+                        deck = lang
 
                 card_ids = search_anki(term, deck=deck)
                 card_ids_i = 0
@@ -1080,7 +1082,7 @@ def main(deck):
                     if '*' in term:
                         continue
                     # Fetch
-                    obj = search(term, lang=deck)
+                    obj = search(term, lang=lang)
                     content = obj and obj.get('definition')
                     suggestions = obj and obj.get('suggestions') or []
                     # If any, suggestions/content printed on next iteration.
@@ -1131,7 +1133,7 @@ def completer(text: str, state: int) -> str:
 if __name__ == "__main__":
     decks = get_deck_names()
     parser = OptionParser()
-    parser.add_option("-d", "--deck", dest="deck",
+    parser.add_option("-k", "--deck", dest="deck",
         help="Name of Anki deck to use (must be a 2-letter language code, e.g. 'de')"
         )
     (options, args) = parser.parse_args()

@@ -1066,6 +1066,8 @@ def main(deck):
                     lang, term = match.groups()
                     if re.match(f'({decks_re})', lang):
                         deck = lang
+                else:
+                    lang = deck
 
                 card_ids = search_anki(term, deck=deck)
                 card_ids_i = 0

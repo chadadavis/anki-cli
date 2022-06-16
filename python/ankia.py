@@ -51,7 +51,8 @@ from nltk.stem.snowball import SnowballStemmer
 # All addons:
 # https://ankiweb.net/shared/addons/
 
-# TODO allow to SIGINT / Ctrl-C during external lookup.
+# note markup for antonyms - or check API -
+# else replace <span class="Ant"> with something else (e.g. franc != menteur)
 
 # Terminal display - pager
 # Pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen

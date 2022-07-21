@@ -215,6 +215,7 @@ def render(string, *, highlight=None, front=None, deck=None):
         ,'anatomie'
         ,'architectuur'
         ,'commercie'
+        ,'computers'
         ,'constructie'
         ,'culinair'
         ,'defensie'

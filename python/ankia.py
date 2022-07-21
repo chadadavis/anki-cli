@@ -517,7 +517,7 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
 
     # Collapse double letters into a disjunction, eg: (NL-specific)
     # This implies that the user should, when in doubt, use double chars in the query
-    # deck:nl (front:dooen OR front:doen)
+    # deck:nl (front:maaken OR front:maken)
     # or use a re: (but that doesn't seem to work)
     # TODO BUG: this isn't a proper Combination (maths), so it misses some cases
     # TODO consider a stemming library here?
@@ -530,9 +530,13 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
         terms += [next_term]
         search_term = next_term
 
-    if wild:
-        terms = map(lambda x: f'*{x}*', terms)
-    terms = map(lambda x: field + ':' + x, terms)
+    if field:
+        if wild:
+            # Wrap *stars* around (each) term.
+            # Note, only necessary if using 'field', since it's default otherwise
+            terms = map(lambda x: f'*{x}*', terms)
+        terms = map(lambda x: field + ':' + x, terms)
+
     query = f'deck:{deck} (' + ' OR '.join([*terms]) + ')'
     # info_print(f'query:{query}')
 
@@ -798,7 +802,6 @@ def main(deck):
 
     # Across the deck, the number(s) of wildcard matches on the front/back of other cards
     wild_n = None
-    back_n = None
 
     # The content/definition of the current (locally/remotely) found card
     content = None
@@ -899,13 +902,11 @@ def main(deck):
         if term:
             menu += [
                 COLOR_VALUE + term + PLAIN,
-                "(C)ards", "(G)oogle", "(F)etch",
+                "(G)oogle", "(F)etch", "(B)rowse",
             ]
 
             if wild_n:
                 menu += [ f"(W)ilds:" + COLOR_VALUE + str(wild_n) + PLAIN ]
-            if back_n:
-                menu += [ f"(B)acks:" + COLOR_VALUE + str(back_n) + PLAIN ]
 
         # spell-checker:enable
 
@@ -922,21 +923,20 @@ def main(deck):
             # TODO smarter way to clear relevant state vars ?
             # What's the state machine/diagram behind all these?
 
-            # * Sync
             # / Search
             # a Add
-            # b (Search) Backs
-            # c (Cards) Browser/List/Cards/Anki
+            # b Browse/list matching cards in Anki GUI
             # d Delete/remove
             # f Fetch / lookup / Definition / Query
             # g Google
             # k Deck
             # n Next
-            # p Prev / Shift-n
+            # p Prev / Shift-n, or up key ↑
             # r Review
-            # s Search
-            # w Wildcards
+            # s Search, or '/' key
+            # w Wildcard matches (in front or back fields)
             # y Sync
+            # * Sync
 
             if key in KEYS_CLOSE:
                 clear_line()
@@ -972,7 +972,6 @@ def main(deck):
                 card_ids = []
                 card_ids_i = 0
                 wild_n = None
-                back_n = None
                 suggestions = []
                 content = None
                 scroll_screen()
@@ -991,16 +990,13 @@ def main(deck):
                     scroll_screen()
                 else:
                     beep()
-            elif key == 'c' and term:
-                # Open Anki Card browser/list, for the sake of editing/custom searches
-                search_anki(term, deck=deck, browse=True)
+            elif key == 'b' and term:
+                # Open Anki Card browser/list, in wildcard mode search,
+                # for the sake of editing/custom searches
+                search_anki(term, deck=deck, field=None, browse=True)
             elif key == 'w' and wild_n:
-                # Search front with wildcard, or just search for *term*
-                card_ids = search_anki(term, deck=deck, wild=True)
-                card_ids_i = 0
-            elif key == 'b' and back_n:
-                # Search back (with wildcard matching)
-                card_ids = search_anki(term, deck=deck, field='back', wild=True)
+                # wildcard search all fields (front, back, etc)
+                card_ids = search_anki(term, deck=deck, field=None)
                 card_ids_i = 0
             elif key in ('n') and card_ids_i < len(card_ids) - 1:
                 card_ids_i += 1
@@ -1032,7 +1028,6 @@ def main(deck):
                 card_id = None
                 card_ids = []
                 wild_n  = None
-                back_n  = None
                 edits_n += 1
                 # Update readline, as if I had searched for this term
                 readline.add_history(term)
@@ -1044,9 +1039,11 @@ def main(deck):
                 suggestions = obj and obj.get('suggestions') or []
                 # If any, suggestions/content printed on next iteration.
 
-            elif key in ('s', '\x10'):
+            elif key in ('s', '\x10', '\x1b[A'):
                 # Exact match search
-                # The \x10 is Ctrl-P which is readline muscle memory for 'previous' line
+                # The \x10 is Ctrl-P which is readline muscle memory for 'previous' line.
+                # The \x1b[A is the up key ↑ which is readline muscle memory for 'previous' line.
+
                 content = None
                 suggestions = []
 
@@ -1076,8 +1073,7 @@ def main(deck):
                 # TODO do all the searches (by try to minimise exact and wildcard into one request)
                 # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
 
-                wild_n = len(set(search_anki(term, deck=deck, wild=True)) - set(card_ids))
-                back_n = len(search_anki(term, deck=deck, wild=True, field='back'))
+                wild_n = len(set(search_anki(term, deck=deck, field=None)) - set(card_ids))
                 if not card_ids:
                     card_id = None
                     content = None
@@ -1091,7 +1087,7 @@ def main(deck):
                     # If any, suggestions/content printed on next iteration.
 
             else:
-                # Unrecognized command. 
+                # Unrecognized command.
                 print("\a", end='', flush=True)
 
 

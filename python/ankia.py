@@ -18,9 +18,6 @@ the definition for 'oormerken' (the infinitive). In that case, you'd rather not
 add that card, but rather re-search for 'oormerken', now that you know what the
 base form is, and add that card instead.
 
-Note, that regex search in Anki is supported from 2.1.24+ onward
-https://apps.ankiweb.net/
-
 """
 import html
 import json
@@ -32,6 +29,12 @@ import time
 import urllib.parse
 import urllib.request
 from optparse import OptionParser
+
+# Note, that regex search in Anki is supported from 2.1.24+ onward
+# https://apps.ankiweb.net/
+# https://docs.ankiweb.net/searching.html
+# https://docs.rs/regex/1.3.9/regex/#syntax
+# But it unfortunately doesn't help much for the NL words from woorden.org due to the non-consistent format.
 
 # This override is necessary for wildcard searches, due to extra interpolation.
 # Otherwise 're' raises an exception. Search for 'regex' below.

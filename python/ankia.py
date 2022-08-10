@@ -18,6 +18,9 @@ the definition for 'oormerken' (the infinitive). In that case, you'd rather not
 add that card, but rather re-search for 'oormerken', now that you know what the
 base form is, and add that card instead.
 
+Note, that regex search in Anki is supported from 2.1.24+ onward
+https://apps.ankiweb.net/
+
 """
 import html
 import json
@@ -516,27 +519,38 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     # Or see how it's being done inside this addon:
     # https://ankiweb.net/shared/info/1924690148
 
+    terms = [search_term]
+
     # Collapse double letters into a disjunction, eg: (NL-specific)
     # This implies that the user should, when in doubt, use double chars in the query
     # deck:nl (front:maaken OR front:maken)
     # or use a re: (but that doesn't seem to work)
     # TODO BUG: this isn't a proper Combination (maths), so it misses some cases
     # TODO consider a stemming library here?
-
-    terms = [search_term]
-    while True:
-        next_term = re.sub(r'(.)\1', '\g<1>', search_term, count=1)
-        if next_term == search_term:
-            break
-        terms += [next_term]
-        search_term = next_term
+    if deck == 'nl':
+        while True:
+            next_term = re.sub(r'(.)\1', '\g<1>', search_term, count=1)
+            if next_term == search_term:
+                break
+            terms += [next_term]
+            search_term = next_term
 
     if field:
+        # info_print(f'field:{field}')
         if wild:
             # Wrap *stars* around (each) term.
             # Note, only necessary if using 'field', since it's default otherwise
             terms = map(lambda x: f'*{x}*', terms)
         terms = map(lambda x: field + ':' + x, terms)
+
+        # Regex search of declinations:
+        # This doesn't really work, since the text in the 'back' field isn't consistent.
+        # Sometimes there's a parenthetical expression after the declination, sometimes not
+        # So, I can''t anchor the end of it, which means it's the same as just a wildcard search across the whole back.
+        # eg 'Verbuigingen.*{term}', and that's not any more specific than just searching the whole back ...
+        # if field == 'front' and deck == 'nl':
+        #     # Note, Anki needs the term in the query that uses "re:" to be wrapped in double quotes (also in the GUI)
+        #     terms = [*terms, f'"back:re:(?s)(Verbuiging|Vervoeging)(en)?:(&nbsp;|\s|<.*?>|heeft|is)*{term}\\b"' ]
 
     query = f'deck:{deck} (' + ' OR '.join([*terms]) + ')'
     # info_print(f'query:{query}')
@@ -828,10 +842,12 @@ def main(deck):
         # Set card_id and content based on card_ids and card_ids_i
         if card_ids:
             cards = [ { 'id': id,'term': get_card(id)['fields']['Front']['value'] } for id in card_ids ]
-            cards = sorted(cards, key=lambda x: x['term'])
-            card_ids = [c['id'] for c in cards ]
+
             # TODO consider caching get_card() and render_card() for the cards in this set.
             # And maybe use card_ids_i = None as a signal that sort is needed, since it's not always needed.
+            # cards = sorted(cards, key=lambda x: x['term'])
+
+            card_ids = [c['id'] for c in cards ]
             card_id = card_ids[card_ids_i]
             card = get_card(card_id)
             content = render_card(card)
@@ -855,6 +871,8 @@ def main(deck):
 
         if term and not content:
             info_print("No results: " + term)
+            if wild_n:
+                info_print(f"(W)ilds:" + COLOR_VALUE + str(wild_n) + PLAIN)
 
         if suggestions:
             info_print("Did you mean: (press TAB for autocomplete)")
@@ -1075,13 +1093,14 @@ def main(deck):
                 # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
 
                 wild_n = len(set(search_anki(term, deck=deck, field=None)) - set(card_ids))
-                if not card_ids:
+                if not card_ids and not wild_n:
                     card_id = None
                     content = None
 
                     if '*' in term:
                         continue
-                    # Fetch
+
+                    # Fetch (automatically when no local exact/wild matches)
                     obj = search(term, lang=lang)
                     content = obj and obj.get('definition')
                     suggestions = obj and obj.get('suggestions') or []

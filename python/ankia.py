@@ -226,6 +226,7 @@ def render(string, *, highlight=None, front=None, deck=None):
         ,'culinair'
         ,'defensie'
         ,'educatie'
+        ,'electriciteit'
         ,'electronica'
         ,'financieel'
         ,'formeel'
@@ -1164,6 +1165,7 @@ if __name__ == "__main__":
         options.deck = decks[0]
 
     readline.set_completer(completer)
+    readline.set_completer_delims('')
     readline.parse_and_bind("tab: complete")
 
     # Set terminal title, to be able to search through windows

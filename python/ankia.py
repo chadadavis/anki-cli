@@ -1062,7 +1062,7 @@ def main(deck):
                 suggestions = obj and obj.get('suggestions') or []
                 # If any, suggestions/content printed on next iteration.
 
-            elif key in ('s', '\x10', '\x1b[A'):
+            elif key in ('s', '/', '\x10', '\x1b[A'):
                 # Exact match search
                 # The \x10 is Ctrl-P which is readline muscle memory for 'previous' line.
                 # The \x1b[A is the up key ↑ which is readline muscle memory for 'previous' line.

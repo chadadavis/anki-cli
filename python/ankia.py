@@ -929,7 +929,7 @@ def main(deck):
             ]
 
             if wild_n:
-                menu += [ f"(W)ilds:" + COLOR_VALUE + str(wild_n) + PLAIN ]
+                menu += [ f"(W)ilds:" + COLOR_VALUE + str(wild_n) + PLAIN + ' more' ]
 
         # spell-checker:enable
 
@@ -1014,13 +1014,19 @@ def main(deck):
                 else:
                     beep()
             elif key == 'b' and term:
-                # Open Anki Card browser/list, in wildcard mode search,
+                # Open Anki GUI Card browser/list,
                 # for the sake of editing/custom searches
-                search_anki(term, deck=deck, field=None, browse=True)
+                if len(card_ids) > 1:
+                    # Wildcard search fronts and backs
+                    search_anki(term, deck=deck, field=None, browse=True)
+                else:
+                    # Search 'front' for this one card
+                    search_anki(term, deck=deck, field='front', browse=True)
             elif key == 'w' and wild_n:
                 # wildcard search all fields (front, back, etc)
                 card_ids = search_anki(term, deck=deck, field=None)
                 card_ids_i = 0
+                wild_n = None
             elif key in ('n') and card_ids_i < len(card_ids) - 1:
                 card_ids_i += 1
             elif key in ('p', 'N') and card_ids_i > 0:

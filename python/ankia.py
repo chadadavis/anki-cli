@@ -1027,6 +1027,7 @@ def main(deck):
                 card_ids = search_anki(term, deck=deck, field=None)
                 card_ids_i = 0
                 wild_n = None
+                suggestions = []
             elif key in ('n') and card_ids_i < len(card_ids) - 1:
                 card_ids_i += 1
             elif key in ('p', 'N') and card_ids_i > 0:

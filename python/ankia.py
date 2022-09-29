@@ -115,24 +115,24 @@ from nltk.stem.snowball import SnowballStemmer
 # The '1;' makes a foreground color bold/bright as well.
 # https://stackoverflow.com/a/33206814/256856
 YELLOW    = "\033[0;33m"
-LT_YELLOW = "\033[1;33m"
+YELLOW_LT = "\033[1;33m"
 GREEN     = "\033[0;32m"
-LT_GREEN  = "\033[1;32m"
+GREEN_LT  = "\033[1;32m"
 BLUE      = "\033[0;34m"
-LT_BLUE   = "\033[1;34m"
+BLUE_LT   = "\033[1;34m"
 RED       = "\033[0;31m"
-LT_RED    = "\033[1;31m"
+RED_LT    = "\033[1;31m"
 GREY      = "\033[0;02m"
-LT_GREY   = "\033[1;02m"
+GRAY_LT   = "\033[1;02m"
 WHITE     = "\033[0;37m"
-LT_WHITE  = "\033[1;37m"
-PLAIN     = "\033[0;00m"
+WHITE_LT  = "\033[1;37m"
+RESET     = "\033[0;00m"
 
 # Abstract colors into use cases, in case we want to change the mapping later
-COLOR_COMMAND   = LT_WHITE
-COLOR_WARN      = LT_YELLOW
-COLOR_VALUE     = LT_BLUE
-COLOR_OK        = LT_GREEN
+COLOR_COMMAND   = WHITE_LT
+COLOR_WARN      = YELLOW_LT
+COLOR_VALUE     = BLUE_LT
+COLOR_OK        = GREEN_LT
 COLOR_HIGHLIGHT = YELLOW
 # TODO update render() and info_print() to use these too
 
@@ -259,7 +259,7 @@ def render(string, *, highlight=None, front=None, deck=None):
         if category in categories:
             string = re.sub(r'<sup>(.*?)</sup>', '[\g<1>]', string)
         else:
-            string = re.sub(r'<sup>(.*?)</sup>', f'[{LT_YELLOW}\g<1>{PLAIN}]', string)
+            string = re.sub(r'<sup>(.*?)</sup>', f'[{YELLOW_LT}\g<1>{RESET}]', string)
 
     # Specific to: PONS Großwörterbuch Deutsch als Fremdsprache
     string = re.sub('<span class="illustration">', '\n', string)
@@ -482,7 +482,7 @@ def render(string, *, highlight=None, front=None, deck=None):
             for t in reversed(spans):
                 x,y = t
                 # Also, here, y before x, since back-to-front
-                l.insert(y, PLAIN)
+                l.insert(y, RESET)
                 l.insert(x, YELLOW)
 
             string = ''.join(l)
@@ -491,11 +491,11 @@ def render(string, *, highlight=None, front=None, deck=None):
             # Just do case-insensitive highlighting.
             # NB, the (?i:...) doesn't create a group.
             # That's why ({highlight}) needs it's own parens here.
-            string = re.sub(f"(?i:({highlight_re}))", f"{YELLOW}\g<1>{PLAIN}", string)
+            string = re.sub(f"(?i:({highlight_re}))", f"{YELLOW}\g<1>{RESET}", string)
 
     if front:
         # And the front back canonically
-        string = YELLOW + front + PLAIN + '\n\n' + string
+        string = YELLOW + front + RESET + '\n\n' + string
 
     return string
 
@@ -589,7 +589,7 @@ def info_print(*values):
     print(GREY, end='')
     print('_' * LINE_WIDTH)
     print(*values)
-    print(PLAIN, end='')
+    print(RESET, end='')
     if values:
         print()
 
@@ -606,7 +606,7 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     query_term = urllib.parse.quote(term) # For web searches
     url = url + query_term
     clear_line()
-    print(GREY + f"Fetching: {url} ..." + PLAIN, end='', flush=True)
+    print(GREY + f"Fetching: {url} ..." + RESET, end='', flush=True)
 
     try:
         response = urllib.request.urlopen(urllib.request.Request(url))
@@ -646,7 +646,7 @@ def search_thefreedictionary(term, *, lang):
     query_term = urllib.parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
     clear_line()
-    print(GREY + f"Fetching: {url} ..." + PLAIN, end='', flush=True)
+    print(GREY + f"Fetching: {url} ..." + RESET, end='', flush=True)
     try:
         response = urllib.request.urlopen(urllib.request.Request(url))
         content = response.read().decode('utf-8')
@@ -876,7 +876,7 @@ def main(deck):
         if term and not content:
             info_print("No results: " + term)
             if wild_n:
-                info_print(f"(W)ilds:" + COLOR_VALUE + str(wild_n) + PLAIN)
+                info_print(f"(W)ilds:" + COLOR_VALUE + str(wild_n) + RESET)
 
         if suggestions:
             info_print("Did you mean: (press TAB for autocomplete)")
@@ -891,53 +891,53 @@ def main(deck):
             menu += [ "        " ]
         else:
             if not card_id:
-                menu += [ COLOR_WARN + "?" + PLAIN ]
+                menu += [ COLOR_WARN + "?" + RESET ]
                 menu += [ "(A)dd    " ]
                 menu += [ "(F)etch  " ]
             else:
-                menu += [ COLOR_OK + "✓" + PLAIN]
+                menu += [ COLOR_OK + "✓" + RESET]
                 menu += [ "(D)elete " ]
                 menu += [ "(R)eplace" ]
                 if len(card_ids) > 1:
                     # Display in 1-based counting
                     menu += [
-                        "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:2d}/{len(card_ids):2d}" + PLAIN,
+                        "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:2d}/{len(card_ids):2d}" + RESET,
                     ]
 
         menu += [ '|' ]
-        menu += [ "Dec(k):" + COLOR_VALUE + deck + PLAIN]
+        menu += [ "Dec(k):" + COLOR_VALUE + deck + RESET]
         if edits_n:
-            menu += [ COLOR_WARN + "*" + PLAIN ]
+            menu += [ COLOR_WARN + "*" + RESET ]
         else:
             menu += [ ' ' ]
 
         if n_new := get_new(deck):
-            menu += [ "new:" + COLOR_VALUE + str(n_new) + PLAIN ]
+            menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
         if n_due := get_due(deck):
-            menu += [ "due:" + COLOR_VALUE + str(n_due) + PLAIN ]
+            menu += [ "due:" + COLOR_VALUE + str(n_due) + RESET ]
         if (n_new or n_due) and invoke('getNumCardsReviewedToday') == 0:
-            menu += [ f"(R)eview " + COLOR_WARN + "!" + PLAIN ]
+            menu += [ f"(R)eview " + COLOR_WARN + "!" + RESET ]
 
         # TODO send each popped result through $PAGER .
         # Rather, since it's just a Fetch, do the $PAGER for any Fetch
         if empty_ids := get_empties(deck):
-            menu += [ "(E)mpties:" + COLOR_WARN + str(len(empty_ids)) + PLAIN ]
+            menu += [ "(E)mpties:" + COLOR_WARN + str(len(empty_ids)) + RESET ]
 
         menu += [ "|", "(S)earch" ]
         if term:
             menu += [
-                COLOR_VALUE + term + PLAIN,
+                COLOR_VALUE + term + RESET,
                 "(G)oogle", "(B)rowse",
             ]
 
             if wild_n:
-                menu += [ f"(W)ilds:" + COLOR_VALUE + str(wild_n) + PLAIN + ' more' ]
+                menu += [ f"(W)ilds:" + COLOR_VALUE + str(wild_n) + RESET + ' more' ]
 
         # spell-checker:enable
 
         menu = ' '.join(menu)
         menu = re.sub(r'\(', COLOR_COMMAND, menu)
-        menu = re.sub(r'\)', PLAIN, menu)
+        menu = re.sub(r'\)', RESET, menu)
 
         key = None
         while not key:
@@ -978,16 +978,18 @@ def main(deck):
             elif key == 'k':
                 # Switch decK
                 # TODO refactor this out
-                deck = None
-                clear_line()
-                while not deck:
-                    decks = get_deck_names()
-                    try:
-                        deck = input(f"Deck name {decks}: ")
-                        if not deck in decks:
-                            deck = None
-                    except:
-                        clear_line()
+                scroll_screen()
+                decks = get_deck_names()
+                print("\n".join(decks) + "\n")
+                try:
+                    d = input(f"Switch to deck: ")
+                except:
+                    continue
+                if not d in decks:
+                    beep()
+                    continue
+
+                deck = d
 
                 # This is so that `completer()` can know what lang/deck we're using
                 options.deck = deck
@@ -1057,7 +1059,8 @@ def main(deck):
                     info_print()
                     print(rendered, "\n")
                     try:
-                        reply = input(f"Replace '{front}' with this definition? N/y: ")
+                        prompt = "Replace " + COLOR_COMMAND + front + RESET + " with this definition? N/y: "
+                        reply = input(prompt)
                     except:
                         reply = None
                     if reply and reply.casefold() == 'y':
@@ -1102,7 +1105,7 @@ def main(deck):
                 # TODO factor the prompt of 'term' into a function?
                 clear_line()
                 try:
-                    term = input(f"Search ({COLOR_VALUE + deck + PLAIN}): ")
+                    term = input(f"Search ({COLOR_VALUE + deck + RESET}): ")
                 except:
                     continue
                 term = term.strip()

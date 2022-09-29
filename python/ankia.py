@@ -892,10 +892,11 @@ def main(deck):
         else:
             if not card_id:
                 menu += [ COLOR_WARN + "?" + PLAIN ]
-                menu += [ "(A)dd   " ]
+                menu += [ "(A)dd    " ]
+                menu += [ "(F)etch  " ]
             else:
                 menu += [ COLOR_OK + "✓" + PLAIN]
-                menu += [ "(D)elete" ]
+                menu += [ "(D)elete " ]
                 menu += [ "(R)eplace" ]
                 if len(card_ids) > 1:
                     # Display in 1-based counting
@@ -1030,19 +1031,33 @@ def main(deck):
                 card_ids_i += 1
             elif key in ('p', 'N') and card_ids_i > 0:
                 card_ids_i -= 1
-            elif key == 'r' and term:
-                # Replace old content (check remote dictionary service first)
+
+            elif key == 'f' and term:
+                # Fetch (remote dictionary service)
                 obj = search(term, lang=deck)
+                content = obj and obj.get('definition')
+                suggestions = obj and obj.get('suggestions') or []
+                if content:
+                    card_id = None
+                    card_ids = []
+                # If any, suggestions/content printed on next iteration.
+
+            elif key == 'r' and term:
+                # Replace old content (check remote dictionary service first).
+                # Get the 'front' value of the last displayed card,
+                # since this might be a multi-resultset
+                front = card['fields']['Front']['value']
+                obj = search(front, lang=deck)
                 content = obj and obj.get('definition')
                 suggestions = obj and obj.get('suggestions') or []
 
                 if card_id and content:
-                    rendered = render(content, highlight=term, deck=deck)
+                    rendered = render(content, highlight=front, deck=deck)
                     rendered = wrapper(rendered)
                     info_print()
                     print(rendered, "\n")
                     try:
-                        reply = input(f"Replace '{term}' with this definition? N/y: ")
+                        reply = input(f"Replace '{front}' with this definition? N/y: ")
                     except:
                         reply = None
                     if reply and reply.casefold() == 'y':
@@ -1111,14 +1126,14 @@ def main(deck):
                 # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
 
                 wild_n = len(set(search_anki(term, deck=deck, field=None)) - set(card_ids))
-                if not card_ids and not wild_n:
+                if not card_ids: # and not wild_n:
+                    # Fetch (automatically when no local matches)
                     card_id = None
                     content = None
 
                     if '*' in term:
                         continue
 
-                    # Fetch (automatically when no local exact/wild matches)
                     obj = search(term, lang=lang)
                     content = obj and obj.get('definition')
                     suggestions = obj and obj.get('suggestions') or []

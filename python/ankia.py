@@ -772,7 +772,7 @@ def render_card(card, *, term=None):
         info_print("Warning: 'Front' field with HTML hinders exact match search.")
         # Auto-clean it?
         # TODO: run across all decks (or refactor as a separate util function)
-        # This is likley useless after cleaning all decks once.
+        # This is likely useless after cleaning all decks once.
         # As long as you continue to use this script to add cards.
         if True:
             cleaned = render(f).strip()
@@ -896,6 +896,7 @@ def main(deck):
             else:
                 menu += [ COLOR_OK + "✓" + PLAIN]
                 menu += [ "(D)elete" ]
+                menu += [ "(R)eplace" ]
                 if len(card_ids) > 1:
                     # Display in 1-based counting
                     menu += [
@@ -925,7 +926,7 @@ def main(deck):
         if term:
             menu += [
                 COLOR_VALUE + term + PLAIN,
-                "(G)oogle", "(F)etch", "(B)rowse",
+                "(G)oogle", "(B)rowse",
             ]
 
             if wild_n:
@@ -1001,9 +1002,6 @@ def main(deck):
             elif key in ['y', '*']:
                 sync()
                 edits_n = 0
-            elif key == 'r':
-                invoke('guiDeckReview', name=deck)
-                os.system(WINDOW_RAISE)
             elif key == 'd' and card_id:
                 if delete_card(card_id):
                     edits_n += 1
@@ -1032,15 +1030,24 @@ def main(deck):
                 card_ids_i += 1
             elif key in ('p', 'N') and card_ids_i > 0:
                 card_ids_i -= 1
-            elif key == 'f' and term:
-                # Fetch (remote dictionary service)
+            elif key == 'r' and term:
+                # Replace old content (check remote dictionary service first)
                 obj = search(term, lang=deck)
                 content = obj and obj.get('definition')
                 suggestions = obj and obj.get('suggestions') or []
-                if content:
-                    card_id = None
-                    card_ids = []
-                # If any, suggestions/content printed on next iteration.
+
+                if card_id and content:
+                    rendered = render(content, highlight=term, deck=deck)
+                    rendered = wrapper(rendered)
+                    info_print()
+                    print(rendered, "\n")
+                    try:
+                        reply = input(f"Replace '{term}' with this definition? N/y: ")
+                    except:
+                        reply = None
+                    if reply and reply.casefold() == 'y':
+                        update_card(card_id, back=content)
+
             elif key == 'g' and term:
                 search_google(term)
             elif key == 'a' and not card_id:

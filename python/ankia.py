@@ -977,19 +977,24 @@ def main(deck):
                 clear_screen()
             elif key == 'k':
                 # Switch decK
-                # TODO refactor this out
+                # TODO refactor this out. Or use a curses lib.
                 scroll_screen()
                 decks = get_deck_names()
-                print("\n".join(decks) + "\n")
+                print("Switch to deck:\n" + COLOR_COMMAND)
+                print("\n".join(decks))
+                print(RESET)
                 try:
-                    d = input(f"Switch to deck: ")
+                    selected = input()
                 except:
                     continue
-                if not d in decks:
+                if not selected in decks:
                     beep()
                     continue
 
-                deck = d
+                # Remove the selected item, as no longer needed
+                readline.remove_history_item(readline.get_current_history_length() - 1)
+
+                deck = selected
 
                 # This is so that `completer()` can know what lang/deck we're using
                 options.deck = deck

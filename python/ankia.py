@@ -1110,7 +1110,7 @@ def main(deck):
                 # TODO factor the prompt of 'term' into a function?
                 clear_line()
                 try:
-                    term = input(f"Search ({COLOR_VALUE + deck + RESET}): ")
+                    term = input(f"Search: {COLOR_VALUE + deck + RESET}/")
                 except:
                     continue
                 term = term.strip()
@@ -1118,9 +1118,11 @@ def main(deck):
                     continue
 
                 # Allow to switch deck and search in one step, via a namespace-like search.
-                # e.g. 'nl:zien' would switch deck to 'nl' first, and then search for 'zien'
+                # (Assumes that deck names are 2-letter language codes)
+                # e.g. 'nl:zien' would switch deck to 'nl' first, and then search for 'zien'.
+                # Also allow separators [;/:] to obviate pressing Shift
                 decks_re = '|'.join(decks := get_deck_names())
-                if match := re.match('\s*([a-z]{2})\s*:\s*(.*)', term):
+                if match := re.match('\s*([a-z]{2})\s*[:;/]\s*(.*)', term):
                     lang, term = match.groups()
                     if re.match(f'({decks_re})', lang):
                         deck = lang

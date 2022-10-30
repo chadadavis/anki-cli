@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""Anki add - fetch online definitions and add new cards to Anki vocabulary
-decks
+"""Anki add - fetch online definitions and add new cards to Anki vocabulary decks
 
 A note on searching for declined / conjugated forms of words:
 
@@ -50,6 +49,8 @@ from iso639 import languages # NB, the pip package is called iso-639 (with a -)
 from nltk.stem.snowball import SnowballStemmer
 
 # Backlog/TODO
+
+# Replace 'poliek' category with 'politiek' in nl cards.
 
 # Consider alternative addons for Anki:
 # https://ankiweb.net/shared/info/1807206748
@@ -106,6 +107,7 @@ from nltk.stem.snowball import SnowballStemmer
 
 # Logging:
 # look for log4j style debug mode console logging/printing (with colors)
+
 
 ################################################################################
 
@@ -238,6 +240,8 @@ def render(string, *, highlight=None, front=None, deck=None):
         ,'landbouw'
         ,'medisch'
         ,'ouderwets'
+        ,'poliek' # TODO auto-clean typo's from woorden.nl
+        ,'politiek'
         ,'religie'
         ,'speelgoed'
         ,'sport'
@@ -288,6 +292,8 @@ def render(string, *, highlight=None, front=None, deck=None):
 
     # NL-specific (or specific to woorden.org)
     string = re.sub(r'Toon alle vervoegingen', '', string)
+    # Remove hover tip on IPA pronunciation
+    string = re.sub(r'(?s)<a class="?help"? .*?>', '', string)
     # Ensure headings begin on their own line (also covers plural forms, eg "Synoniemen")
     string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', '\n\g<1>', string)
     # Remove seperators in plurals (eg in the section: "Verbuigingen")
@@ -502,11 +508,13 @@ def render(string, *, highlight=None, front=None, deck=None):
 
 def search(term, *, lang):
     obj = {}
+
     if lang == 'nl':
         content = search_woorden(term)
         obj['definition'] = content
-    else:
-        obj = search_thefreedictionary(term, lang=lang)
+        return obj
+
+    obj = search_thefreedictionary(term, lang=lang)
     return obj
 
 
@@ -593,13 +601,22 @@ def info_print(*values):
     if values:
         print()
 
+def debug_print(*values):
+    if not options.debug:
+        return
+    info_print(*values)
+
+
+def launch_url(url):
+    cmd = f'xdg-open {url} >/dev/null 2>&1 &'
+    info_print(f"Opening: {url}")
+    os.system(cmd)
+
 
 def search_google(term):
     query_term = urllib.parse.quote(term) # For web searches
     url=f'https://google.com/search?q={query_term}'
-    cmd = f'xdg-open {url} >/dev/null 2>&1 &'
-    info_print(f"Opening: {url}")
-    os.system(cmd)
+    launch_url(url)
 
 
 def search_woorden(term, *, url='http://www.woorden.org/woord/'):
@@ -631,9 +648,9 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     # BUG parsing broken for 'stokken'
     # BUG parsing broken for http://www.woorden.org/woord/tussenin
 
-    match = re.search(f"(\<h2.*?{term}.*?)(?=&copy|Bron:|\<div|\<\/div)", content)
-    # match = re.search(f'(\<h2.*?{term}.*?)(?=div)', content) # This should handle all cases (first new/closing div)
+    match = re.search(f"(?s)(\<h2.*?{term}.*?)(?=&copy|Bron:|\<div|\<\/div)", content)
     if not match:
+        debug_print("No match in HTML document")
         return
     definition = match.group()
     return definition
@@ -782,6 +799,10 @@ def render_card(card, *, term=None):
             # Get again from Anki to verify updated card
             return render_card(get_card(card_id))
 
+    if options.debug and 'poliek' in b:
+        info_print("Would replace poliek")
+        ...
+
     return b_rendered
 
 
@@ -792,16 +813,20 @@ def sync():
 
 
 def clear_line():
+    if options.debug:
+        print()
     LINE_WIDTH = os.get_terminal_size().columns
     print('\r' + (' ' * LINE_WIDTH) + '\r', end='', flush='True')
 
 
 def clear_screen():
-    print('\033c')
+    if not options.debug:
+        print('\033c')
 
 
 def scroll_screen():
-    print("\n" * os.get_terminal_size().lines)
+    if not options.debug:
+        print("\n" * os.get_terminal_size().lines)
 
 
 def beep():
@@ -840,7 +865,8 @@ def main(deck):
 
     # Clear/Scroll screen (we scroll here because 'clear' would erase history)
     # TODO consider switching to curses lib
-    scroll_screen()
+    if not options.debug:
+        scroll_screen()
 
     while True:
         # Set card_id and content based on card_ids and card_ids_i
@@ -860,17 +886,19 @@ def main(deck):
 
         # Remind the user of any previous context, and then allow to Add
         content = content or ''
+
         # Clear the top of the screen
         # But ensure that it lines up, so that PgUp and PgDown on the terminal work one-def-at-a-time
         # TODO refactor this into scroll_screen
         rendered = render(content, highlight=term, deck=deck)
         rendered = wrapper(rendered)
-        lines_n = os.get_terminal_size().lines - len(re.findall("\n", rendered))
-        # TODO refactor this out into a scroll() def and call it also after changing deck
-        # With default being os.get_terminal_size().lines - 4 (or whatever lines up)
-        # And make the 4 a constant BORDERS_HEIGHT
-        info_print()
-        print("\n" * lines_n)
+        if not options.debug:
+            lines_n = os.get_terminal_size().lines - len(re.findall("\n", rendered))
+            # TODO refactor this out into a scroll() def and call it also after changing deck
+            # With default being os.get_terminal_size().lines - 4 (or whatever lines up)
+            # And make the 4 a constant BORDERS_HEIGHT
+            info_print()
+            print("\n" * lines_n)
         print(rendered, "\n")
 
         if term and not content:
@@ -1073,6 +1101,11 @@ def main(deck):
 
             elif key == 'g' and term:
                 search_google(term)
+            elif key == 'o' and term:
+                url_term = urllib.parse.quote(term) # For web searches
+                # TODO this should use whatever the currently active dictionary is
+                url=f'http://www.woorden.org/woord/{url_term}'
+                launch_url(url)
             elif key == 'a' and not card_id:
                 add_card(term, content, deck=deck)
                 edits_n += 1
@@ -1195,8 +1228,9 @@ def completer(text: str, state: int) -> str:
 if __name__ == "__main__":
     decks = get_deck_names()
     parser = OptionParser()
+    parser.add_option('-d', "--debug", dest='debug', action='store_true')
     parser.add_option("-k", "--deck", dest="deck",
-        help="Name of Anki deck to use (must be a 2-letter language code, e.g. 'de')"
+        help="Name of Anki deck to use (must be a 2-letter language code, e.g. 'en')"
         )
     (options, args) = parser.parse_args()
     if not options.deck:

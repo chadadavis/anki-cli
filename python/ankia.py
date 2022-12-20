@@ -51,7 +51,11 @@ from nltk.stem.snowball import SnowballStemmer
 # Backlog/TODO
 
 # Replace 'poliek' category with 'politiek' in nl cards.
+# And also the pipe '|' char in Verbuigingen lines.
 
+# Make constants for the keycodes, eg CTRL_C = '\x03'
+
+# Enable searching for eg O&O (in the card encoded as O&amp;O )
 # Consider alternative addons for Anki:
 # https://ankiweb.net/shared/info/1807206748
 # https://github.com/finalion/WordQuery
@@ -71,6 +75,8 @@ from nltk.stem.snowball import SnowballStemmer
 
 # Use freeDictionary API, so as to need less regex parsing
 # https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
+
+# Add support for wiktionary? (IPA?) ?
 
 # Add nl-specific etymology?
 # https://etymologiebank.nl/
@@ -105,6 +111,11 @@ from nltk.stem.snowball import SnowballStemmer
 #
 # And maybe later think about how to combine/concat these also to the same anki card ...
 
+# Anki add: replace cards with plain text and then either:
+# 1: put inflections # into another field/tag
+# 2:use single-line regex search to search # inflections/verbuigingen
+# (since there's no consistent ending to anchor with a regex)
+
 # Logging:
 # look for log4j style debug mode console logging/printing (with colors)
 
@@ -138,8 +149,15 @@ COLOR_OK        = GREEN_LT
 COLOR_HIGHLIGHT = YELLOW
 # TODO update render() and info_print() to use these too
 
-# q, ESC-ESC, Ctrl-C, Ctrl-D, Ctrl-W
-KEYS_CLOSE = ('q', 'x', '\x1b\x1b', '\x03', '\x04', '\x17')
+# Key commands that close the app
+KEYS_CLOSE = (
+    'q',
+    'x',
+    '\x1b\x1b', # ESC-ESC
+    # '\x03',     # Ctrl-C
+    # '\x04',     # Ctrl-D
+    '\x17',     # Ctrl-W
+    )
 
 # NB, because the sync operation opens new windows, the window list keeps growing.
 # So, you can't use a static window id here. So, use the classname to get them all.
@@ -217,6 +235,7 @@ def render(string, *, highlight=None, front=None, deck=None):
         ,'\S+ografie'
         ,'\S+ologie'
         ,'\S+onomie'
+        ,'\S*techniek'
 
         ,'algemeen'
         ,'ambacht'
@@ -944,7 +963,7 @@ def main(deck):
         if n_due := get_due(deck):
             menu += [ "due:" + COLOR_VALUE + str(n_due) + RESET ]
         if (n_new or n_due) and invoke('getNumCardsReviewedToday') == 0:
-            menu += [ f"(R)eview " + COLOR_WARN + "!" + RESET ]
+            menu += [ f"Review " + COLOR_WARN + "!" + RESET ]
 
         # TODO send each popped result through $PAGER .
         # Rather, since it's just a Fetch, do the $PAGER for any Fetch
@@ -985,7 +1004,7 @@ def main(deck):
             # k Deck
             # n Next
             # p Prev / Shift-n, or up key ↑
-            # r Review
+            # r Replace
             # s Search, or '/' key
             # w Wildcard matches (in front or back fields)
             # y Sync
@@ -1000,8 +1019,8 @@ def main(deck):
                 ts = "%04d-%02d-%02d %02d:%02d:%02d" % tl
                 info_print(f"pid: {os.getpid()} mtime: {ts} execv: {sys.argv[0]}")
                 os.execv(sys.argv[0], sys.argv)
-            elif key == '\x0c':
-                # Ctrl-L clear screen
+            elif key in ('\x0c', '\x03'):
+                # Ctrl-L or Ctrl-C clear screen
                 clear_screen()
             elif key == 'k':
                 # Switch decK

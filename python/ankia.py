@@ -599,8 +599,20 @@ def get_new(deck):
     return len(card_ids)
 
 
+# Cards due before 0 days from now
 def get_due(deck):
-    card_ids = invoke('findCards', query=f"deck:{deck} is:due")
+    card_ids = invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
+    return len(card_ids)
+
+
+# Immature cards, short interval
+def get_mid(deck):
+    card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl<21")
+    return len(card_ids)
+
+# Mature cards
+def get_old(deck):
+    card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl>=21")
     return len(card_ids)
 
 
@@ -958,10 +970,12 @@ def main(deck):
         else:
             menu += [ ' ' ]
 
-        if n_new := get_new(deck):
-            menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
+        if n_old := get_old(deck):
+            menu += [ "known:" + COLOR_VALUE + str(n_old) + RESET ]
         if n_due := get_due(deck):
             menu += [ "due:" + COLOR_VALUE + str(n_due) + RESET ]
+        if n_new := get_new(deck):
+            menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
         if (n_new or n_due) and invoke('getNumCardsReviewedToday') == 0:
             menu += [ f"Review " + COLOR_WARN + "!" + RESET ]
 

@@ -209,6 +209,8 @@ def invoke(action, **params):
 
 def get_deck_names():
     names = sorted(invoke('deckNames'))
+    # Filter out sub-decks
+    # names = [ i for i in names if not '::' in i]
     return names
 
 
@@ -1045,24 +1047,37 @@ def main(deck):
             elif key == 'k':
                 # Switch decK
                 # TODO refactor this out. Or use a curses lib.
-                scroll_screen()
                 decks = get_deck_names()
-                print("Switch to deck:\n" + COLOR_COMMAND)
-                print("\n".join(decks))
+                scroll_screen()
+                print(COLOR_COMMAND)
+                print("\n * ".join(['', *decks]))
                 print(RESET)
+
+                deck_prev = options.deck
+                # Block autocomplete of dictionary entries
+                options.deck = None
+                # Push deck names onto readline history stack, for ability to autocomplete
+                hist_len_pre = readline.get_current_history_length()
+                for d in decks:
+                    readline.add_history(d)
+
                 try:
-                    selected = input()
+                    selected = input("Switch to deck: ")
                 except:
+                    options.deck = deck_prev
                     continue
+                finally:
+                    # Remove the deck names, as no longer needed in (word) history.
+                    # This isn't just (hist_len_post - hist_len_pre) , because it
+                    # depends on how many times the user completed.
+                    hist_len_post = readline.get_current_history_length()
+                    for i in range(hist_len_post, hist_len_pre, -1):
+                        readline.remove_history_item(i-1) # zero-based indexes
+
                 if not selected in decks:
                     beep()
                     continue
-
-                # Remove the selected item, as no longer needed
-                readline.remove_history_item(readline.get_current_history_length() - 1)
-
                 deck = selected
-
                 # This is so that `completer()` can know what lang/deck we're using
                 options.deck = deck
 
@@ -1248,8 +1263,8 @@ def completer(text: str, state: int) -> str:
                     ]
 
     # Autocomplete via prefix search in Anki (via local HTTP server)
-    if not completions:
-        global options
+    global options
+    if options.deck and not completions:
         card_ids = search_anki(text + '*', deck=options.deck)
         for card_id in card_ids:
             term = get_card(card_id)['fields']['Front']['value']

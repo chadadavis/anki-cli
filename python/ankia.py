@@ -594,23 +594,29 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     return card_ids
 
 
+# This set does not overlap with get_mid() nor get_old()
 def get_new(deck):
     card_ids = invoke('findCards', query=f"deck:{deck} is:new")
     return len(card_ids)
 
 
 # Cards due before 0 days from now
+# This set does overlap with get_mid() or get_old()
+# This set does not overlap with get_new()
 def get_due(deck):
     card_ids = invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
     return len(card_ids)
 
 
 # Immature cards, short interval
+# This set does not overlap with get_new() nor get_old()
 def get_mid(deck):
     card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl<21")
     return len(card_ids)
 
+
 # Mature cards
+# This set does not overlap with get_new() nor get_mid()
 def get_old(deck):
     card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl>=21")
     return len(card_ids)
@@ -971,9 +977,9 @@ def main(deck):
             menu += [ ' ' ]
 
         if n_old := get_old(deck):
-            menu += [ "known:" + COLOR_VALUE + str(n_old) + RESET ]
-        if n_due := get_due(deck):
-            menu += [ "due:" + COLOR_VALUE + str(n_due) + RESET ]
+            menu += [ "mature:" + COLOR_VALUE + str(n_old) + RESET ]
+        if n_due := get_mid(deck):
+            menu += [ "young:" + COLOR_VALUE + str(n_due) + RESET ]
         if n_new := get_new(deck):
             menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
         if (n_new or n_due) and invoke('getNumCardsReviewedToday') == 0:

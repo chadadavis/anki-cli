@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 """Anki add - fetch online definitions and add new cards to Anki vocabulary decks
 
+Based on this API:
+https://github.com/FooSoft/anki-connect/
+
 A note on searching for declined / conjugated forms of words:
 
 It would be nice to confirm that the content fetched corresponds to the term
@@ -602,11 +605,23 @@ def get_new(deck):
     return len(card_ids)
 
 
-# Cards due before 0 days from now
-# This set does overlap with get_mid() or get_old()
+# Cards due before 0 days from now.
+# Only if no reviews were done since midnight, since user has already reviewed deck today.
+# This is to stimulate doing a review today, if it has any cards that can be reviewed.
 # This set does not overlap with get_new()
+# This set does overlap with get_mid() or get_old()
+# TODO this wrongly returns epoch_review == 0 for hierarchical decks (eg "Python")
+# TODO does this need to match the Anki setting "Next day begins N hours *after* midnight" ?
 def get_due(deck):
-    card_ids = invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
+    card_ids = []
+    review_id = invoke('getLatestReviewID', deck=deck)
+    # Truncate milliseconds
+    epoch_review = int(review_id/1000)
+    # This just gets the YYYY,MM,DD out of the struct_time
+    # TODO find a more intuitive way to do this
+    epoch_midnight = int(time.mktime(tuple([ *time.localtime()[0:3], *[0]*5, -1 ])))
+    if epoch_review < epoch_midnight :
+        card_ids = invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
     return len(card_ids)
 
 
@@ -639,6 +654,7 @@ def info_print(*values):
     print(RESET, end='')
     if values:
         print()
+
 
 def debug_print(*values):
     if not options.debug:
@@ -978,14 +994,14 @@ def main(deck):
         else:
             menu += [ ' ' ]
 
-        if n_old := get_old(deck):
+        if n_old := get_old(deck) :
             menu += [ "mature:" + COLOR_VALUE + str(n_old) + RESET ]
-        if n_due := get_mid(deck):
-            menu += [ "young:" + COLOR_VALUE + str(n_due) + RESET ]
-        if n_new := get_new(deck):
-            menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
-        if (n_new or n_due) and invoke('getNumCardsReviewedToday') == 0:
-            menu += [ f"Review " + COLOR_WARN + "!" + RESET ]
+        if n_mid := get_mid(deck) :
+            menu += [ "young:"  + COLOR_VALUE + str(n_mid) + RESET ]
+        if n_due := get_due(deck) :
+            menu += [ "due:"    + COLOR_VALUE + str(n_due) + RESET ]
+        # if n_new := get_new(deck) :
+        #     menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
 
         # TODO send each popped result through $PAGER .
         # Rather, since it's just a Fetch, do the $PAGER for any Fetch

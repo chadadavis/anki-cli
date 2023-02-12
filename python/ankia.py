@@ -56,6 +56,10 @@ from nltk.stem.snowball import SnowballStemmer
 # Replace 'poliek' category with 'politiek' in nl cards.
 # And also the pipe '|' char in Verbuigingen lines.
 
+# Just replace all (just NL?) cards with the version from render() ie HTML=>text
+# That would solve a lot of the cleanup problems itself
+# But maybe check that newer/HTML cards don't have too many \n\n in them
+
 # Make constants for the keycodes, eg CTRL_C = '\x03'
 
 # Enable searching for eg O&O (in the card encoded as O&amp;O )
@@ -222,11 +226,19 @@ def render(string, *, highlight=None, front=None, deck=None):
     # This changes are not saved in the cards
     # TODO render HTML another way? eg as Markdown instead?
 
+    # Specific to woorden.org
+    # Before unescaping HTML entities: Replace (&lt; and &gt;) with ( and )
+    string = re.sub(r'\(&lt;', '(', string)
+    string = re.sub(r'\&gt;\)', ')', string)
+
     # Replace HTML entities with unicode chars (for IPA symbols, etc)
     string = html.unescape(string)
 
     # Remove tags that are usually in the phonetic markup
     string = re.sub(r'\<\/?a.*?\>', '', string)
+
+    # NL-specific (woorden.org)
+    string = re.sub(r'poliek', 'politiek', string)
 
     # NL-specific (or specific to woorden.org)
     # Segregate topical category names e.g. 'informeel'
@@ -263,8 +275,8 @@ def render(string, *, highlight=None, front=None, deck=None):
         ,'kunst'
         ,'landbouw'
         ,'medisch'
+        ,'muziek'
         ,'ouderwets'
-        ,'poliek' # TODO auto-clean typo's from woorden.nl
         ,'politiek'
         ,'religie'
         ,'speelgoed'
@@ -328,6 +340,10 @@ def render(string, *, highlight=None, front=None, deck=None):
     # (but not *after*, else you'd get single commas on a line, etc)
     # (using a negative lookbehind assertion here)
     string = re.sub(r'(?<!\n)(`.*?`)', '\n\g<1>', string)
+
+    # NL-specific: Ensure that Voorbeeld(en): has a \n\n before it,
+    # to make the actual defnition stand out more.
+    string = re.sub(r'(?<!\n\n)(Voorbeeld(en)?:)', '\n\n\g<1>', string)
 
     # Max 2x newlines in a row
     string = re.sub(r'\n{3,}', '\n\n', string)
@@ -821,7 +837,7 @@ def delete_card(card_id):
 
 def wrapper(string):
     LINE_WIDTH = os.get_terminal_size().columns
-    WRAP_WIDTH = LINE_WIDTH // 2
+    WRAP_WIDTH = int(LINE_WIDTH * .8)
 
     lines_wrapped = []
     for line in string.splitlines():
@@ -843,20 +859,14 @@ def render_card(card, *, term=None):
         # TODO technically this should be a warn_print
         info_print("Warning: 'Front' field with HTML hinders exact match search.")
         # Auto-clean it?
-        # TODO: run across all decks (or refactor as a separate util function)
-        # This is likely useless after cleaning all decks once.
-        # As long as you continue to use this script to add cards.
         if True:
+            # Rendering removes the HTML, for console printing
             cleaned = render(f).strip()
             card_id = card['cardId']
             update_card(card_id, front=cleaned)
             info_print(f"Updated to:")
             # Get again from Anki to verify updated card
             return render_card(get_card(card_id))
-
-    if options.debug and 'poliek' in b:
-        info_print("Would replace poliek")
-        ...
 
     return b_rendered
 

@@ -59,6 +59,11 @@ from nltk.stem.snowball import SnowballStemmer
 # Just replace all (just NL?) cards with the version from render() ie HTML=>text
 # That would solve a lot of the cleanup problems itself
 # But maybe check that newer/HTML cards don't have too many \n\n in them
+# Checked if rendered text is diff from stored text (in Anki DB).
+# If so, add a menu item (not a prompt) to update card. Then I can still ignore, if I want.
+# So, maybe also use the rendered text then when adding new cards? Or just enable the update menu option?
+# But, what about other langs?
+# Any good way to note cards that I've manually modified? eg just add my own tag CAD: somewhere?
 
 # Make constants for the keycodes, eg CTRL_C = '\x03'
 
@@ -308,7 +313,7 @@ def render(string, *, highlight=None, front=None, deck=None):
     # Remove span tags, so that the text can stay on one line
     string = re.sub('<span.*?>', '', string)
     string = re.sub('<\/span>', '', string)
-    # These tags are usually used inline and should not have a line break
+    # These HTML tags are usually used inline and should not have a line break
     string = re.sub('<[ibu]\/?>', '', string)
 
     # Replace remaining opening tags with a newline, since usually a new section
@@ -936,6 +941,7 @@ def main(deck):
     while True:
         # Set card_id and content based on card_ids and card_ids_i
         if card_ids:
+            # TODO cache/memoize get_card() results
             cards = [ { 'id': id,'term': get_card(id)['fields']['Front']['value'] } for id in card_ids ]
 
             # TODO consider caching get_card() and render_card() for the cards in this set.

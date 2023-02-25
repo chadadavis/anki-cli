@@ -53,6 +53,8 @@ from nltk.stem.snowball import SnowballStemmer
 
 # Backlog/TODO
 
+# Port content cleanups (in the render() def) back into the card, via update()
+
 # Replace 'poliek' category with 'politiek' in nl cards.
 # And also the pipe '|' char in Verbuigingen lines.
 
@@ -65,6 +67,15 @@ from nltk.stem.snowball import SnowballStemmer
 # But, what about other langs?
 # Any good way to note cards that I've manually modified? eg just add my own tag CAD: somewhere?
 
+# Anki add: replace cards with plain text and then either:
+# 1: put inflections # into another field/tag
+# 2:use single-line regex search to search # inflections/verbuigingen
+# (since there's no consistent ending to anchor with a regex)
+
+# Since I'd also like to try to make formatted text versions for other
+# languages, maybe regex-based rendering isn't the most sustainable approach.
+# Would an XSLT, per source, make sense for the HTML def content?
+
 # Make constants for the keycodes, eg CTRL_C = '\x03'
 
 # Enable searching for eg O&O (in the card encoded as O&amp;O )
@@ -76,6 +87,10 @@ from nltk.stem.snowball import SnowballStemmer
 
 # note markup for antonyms - or check API -
 # else replace <span class="Ant"> with something else (e.g. franc != menteur)
+
+# bug with NL results from FD (for when Woorden isn't working).
+# Why does EN work when NL doesn't?
+# If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
 
 # Terminal display - pager
 # Pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
@@ -114,22 +129,25 @@ from nltk.stem.snowball import SnowballStemmer
 # Maybe copy out some things from render() that should be permanent into it's own def
 # And then update the card (like we did before to remove HTML from 'front')
 
+# Add DWDS for better German defs. But get IPA pronunciation elsewhere
+# (eg FreeDictionary or Wiktionary)
+
 # TODO
 # Think about how to add multiples webservices for a single deck/lang (?)
 # Eg beyond a dictionary, what about extra (web) services for:
 # synonyms, pronunciation, etymology, etc, or just allowing for multiple search providers
 # Maybe just:
 # { lang: en, dict: dictionary.com, syn/thes: somesynservice.com, ipa: some ipa service, etym: etymonline.com, ...}
-#
+# Get IPA from wiktionary (rather than FreeDictionary)?
 # And maybe later think about how to combine/concat these also to the same anki card ...
-
-# Anki add: replace cards with plain text and then either:
-# 1: put inflections # into another field/tag
-# 2:use single-line regex search to search # inflections/verbuigingen
-# (since there's no consistent ending to anchor with a regex)
 
 # Logging:
 # look for log4j style debug mode console logging/printing (with colors)
+
+# Anki: unify note types (inheritance), not for this code, but in the app.
+# Learn what the purpose of different notes types is, and then make them all use
+# the same, or make them inherit from each other, so that I don't have to
+# configure/style a separate note type for each language.
 
 
 ################################################################################

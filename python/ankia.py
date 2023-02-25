@@ -995,7 +995,7 @@ def main(deck):
                 menu += [ "(F)etch  " ]
             else:
                 menu += [ COLOR_OK + "✓" + RESET]
-                menu += [ "(D)elete " ]
+                menu += [ "Dele(t)e " ]
                 menu += [ "(R)eplace" ]
                 if len(card_ids) > 1:
                     # Display in 1-based counting
@@ -1004,7 +1004,7 @@ def main(deck):
                     ]
 
         menu += [ '|' ]
-        menu += [ "Dec(k):" + COLOR_VALUE + deck + RESET]
+        menu += [ "(D)eck:" + COLOR_VALUE + deck + RESET]
         if edits_n:
             menu += [ COLOR_WARN + "*" + RESET ]
         else:
@@ -1049,17 +1049,17 @@ def main(deck):
             # TODO smarter way to clear relevant state vars ?
             # What's the state machine/diagram behind all these?
 
-            # / Search
+            # / ↑ Search
             # a Add
             # b Browse/list matching cards in Anki GUI
-            # d Delete/remove
+            # d Deck
             # f Fetch / lookup / Definition / Query
             # g Google
-            # k Deck
             # n Next
             # p Prev / Shift-n, or up key ↑
             # r Replace
             # s Search, or '/' key
+            # t Delete
             # w Wildcard matches (in front or back fields)
             # y Sync
             # * Sync
@@ -1076,8 +1076,8 @@ def main(deck):
             elif key in ('\x0c', '\x03'):
                 # Ctrl-L or Ctrl-C clear screen
                 clear_screen()
-            elif key == 'k':
-                # Switch decK
+            elif key == 'd':
+                # Switch deck
                 # TODO refactor this out. Or use a curses lib.
                 decks = get_deck_names()
                 scroll_screen()
@@ -1124,7 +1124,7 @@ def main(deck):
             elif key in ['y', '*']:
                 sync()
                 edits_n = 0
-            elif key == 'd' and card_id:
+            elif key == 't' and card_id:
                 if delete_card(card_id):
                     edits_n += 1
                     del card_ids[card_ids_i]

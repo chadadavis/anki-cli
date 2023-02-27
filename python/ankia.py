@@ -251,8 +251,10 @@ def render(string, *, highlight=None, front=None, deck=None):
 
     # Specific to woorden.org
     # Before unescaping HTML entities: Replace (&lt; and &gt;) with ( and )
-    string = re.sub(r'\(&lt;', '(', string)
-    string = re.sub(r'\&gt;\)', ')', string)
+    string = re.sub(r'&lt;', '(', string)
+    string = re.sub(r'\&gt;', ')', string)
+    string = re.sub(r'\(\(', '(', string)
+    string = re.sub(r'\)\)', ')', string)
 
     # Replace HTML entities with unicode chars (for IPA symbols, etc)
     string = html.unescape(string)

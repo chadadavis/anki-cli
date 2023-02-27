@@ -722,7 +722,7 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     print(GREY + f"Fetching: {url} ..." + RESET, end='', flush=True)
 
     try:
-        response = urllib.request.urlopen(urllib.request.Request(url))
+        response = urllib.request.urlopen(url)
         content = response.read().decode('utf-8')
     except (Exception, KeyboardInterrupt) as e:
         print("\n")
@@ -761,7 +761,7 @@ def search_thefreedictionary(term, *, lang):
     clear_line()
     print(GREY + f"Fetching: {url} ..." + RESET, end='', flush=True)
     try:
-        response = urllib.request.urlopen(urllib.request.Request(url))
+        response = urllib.request.urlopen(url)
         content = response.read().decode('utf-8')
     except urllib.error.HTTPError as response:
         # NB urllib raises an exception on 404 pages. The content is in the Error.

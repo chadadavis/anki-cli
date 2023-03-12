@@ -61,11 +61,17 @@ from nltk.stem.snowball import SnowballStemmer
 # Just replace all (just NL?) cards with the version from render() ie HTML=>text
 # That would solve a lot of the cleanup problems itself
 # But maybe check that newer/HTML cards don't have too many \n\n in them
+# eg 'nl/trappen' where parenthesized defs get two \n\n but it should be only one \n.
+# and HTML tables have \n\n between the row when it should just be one \n
+
 # Checked if rendered text is diff from stored text (in Anki DB).
 # If so, add a menu item (not a prompt) to update card. Then I can still ignore, if I want.
 # So, maybe also use the rendered text then when adding new cards? Or just enable the update menu option?
 # But, what about other langs?
 # Any good way to note cards that I've manually modified? eg just add my own tag CAD: somewhere?
+# And watch out for terminal color control codes, eg cards that have [architectuur] labels etc
+
+# Use the existing [R]eplace prompt, but prompt (automatically?) any time the raw text (HTML) differs from the rendered text
 
 # Anki add: replace cards with plain text and then either:
 # 1: put inflections # into another field/tag
@@ -75,6 +81,7 @@ from nltk.stem.snowball import SnowballStemmer
 # Since I'd also like to try to make formatted text versions for other
 # languages, maybe regex-based rendering isn't the most sustainable approach.
 # Would an XSLT, per source, make sense for the HTML def content?
+# https://www.w3schools.com/xml/xsl_intro.asp
 
 # Make constants for the keycodes, eg CTRL_C = '\x03'
 
@@ -104,6 +111,7 @@ from nltk.stem.snowball import SnowballStemmer
 # https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
 
 # Add support for wiktionary? (IPA?) ?
+# eg via ? https://github.com/Suyash458/WiktionaryParser
 
 # Add nl-specific etymology?
 # https://etymologiebank.nl/
@@ -129,7 +137,7 @@ from nltk.stem.snowball import SnowballStemmer
 # Maybe copy out some things from render() that should be permanent into it's own def
 # And then update the card (like we did before to remove HTML from 'front')
 
-# Add DWDS for better German defs. But get IPA pronunciation elsewhere
+# Add DWDS for better German defs (API?). But get IPA pronunciation elsewhere
 # (eg FreeDictionary or Wiktionary)
 
 # TODO
@@ -138,8 +146,10 @@ from nltk.stem.snowball import SnowballStemmer
 # synonyms, pronunciation, etymology, etc, or just allowing for multiple search providers
 # Maybe just:
 # { lang: en, dict: dictionary.com, syn/thes: somesynservice.com, ipa: some ipa service, etym: etymonline.com, ...}
-# Get IPA from wiktionary (rather than FreeDictionary)?
+# Get IPA from Wiktionary (rather than FreeDictionary)?
 # And maybe later think about how to combine/concat these also to the same anki card ...
+
+# TODO Address Pylance
 
 # Logging:
 # look for log4j style debug mode console logging/printing (with colors)
@@ -234,7 +244,7 @@ def invoke(action, **params):
             Failed to connect to Anki. Make sure that Anki is running, and using the anki_connect addon.
             https://github.com/FooSoft/anki-connect/
         """)
-        exit()
+        return None
 
 
 def get_deck_names():
@@ -904,7 +914,7 @@ def clear_line():
     if options.debug:
         print()
     LINE_WIDTH = os.get_terminal_size().columns
-    print('\r' + (' ' * LINE_WIDTH) + '\r', end='', flush='True')
+    print('\r' + (' ' * LINE_WIDTH) + '\r', end='', flush=True)
 
 
 def clear_screen():

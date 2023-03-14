@@ -329,7 +329,8 @@ def render(string, *, highlight=None, front=None, deck=None):
     if match:
         category = match.group(1)
         # Highlight it, if it's new, so you can (manually) update the 'categories' list above.
-        if category in categories:
+        # We're doing a regex match here, since some of the category names might be a regex too.
+        if any([ re.search(c, category) for c in categories ]):
             string = re.sub(r'<sup>(.*?)</sup>', '[\g<1>]', string)
         else:
             string = re.sub(r'<sup>(.*?)</sup>', f'[{YELLOW_LT}\g<1>{RESET}]', string)

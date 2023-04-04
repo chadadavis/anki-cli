@@ -968,16 +968,8 @@ def main(deck):
         scroll_screen()
 
     while True:
-        # Set card_id and content based on card_ids and card_ids_i
         if card_ids:
-            # TODO cache/memoize get_card() results
-            cards = [ { 'id': id,'term': get_card(id)['fields']['Front']['value'] } for id in card_ids ]
-
-            # TODO consider caching get_card() and render_card() for the cards in this set.
-            # And maybe use card_ids_i = None as a signal that sort is needed, since it's not always needed.
-            # cards = sorted(cards, key=lambda x: x['term'])
-
-            card_ids = [c['id'] for c in cards ]
+            # Set card_id and content based on card_ids and card_ids_i
             card_id = card_ids[card_ids_i]
             card = get_card(card_id)
             content = render_card(card)

@@ -414,7 +414,7 @@ def render(string, *, highlight=None, front=None, deck=None):
         # https://learnbyexample.github.io/py_regular_expressions/gotchas.html
         # https://docs.python.org/3/library/re.html#re.sub
         # "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
-        highlight = re.sub(r'[*]', r'\\w*', highlight)
+        highlight = re.sub(r'[*]', r'[^ ]*', highlight)
 
         # Terms to highlight, in addition to the query term
         highlights = { highlight }

@@ -41,7 +41,7 @@ from optparse import OptionParser
 
 import readchar
 import unidecode
-# from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup
 from iso639 import languages # NB, the pip package is called iso-639 (with a -)
 from nltk.stem.snowball import SnowballStemmer
 

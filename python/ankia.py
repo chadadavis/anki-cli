@@ -15,10 +15,10 @@ re-search for the canonical form, and then add that term instead. (This should
 be clearly visible if this has happened, because the search term, if present,
 will be highlighted in the displayed text.)
 
-For example, in Dutch searching for 'geoormerkt' (a past participle) will return
+For example, in Dutch, searching for 'geoormerkt' (a past participle) will return
 the definition for 'oormerken' (the infinitive). In that case, you'd rather not
 add that card, but rather re-search for 'oormerken', now that you know what the
-base form is, and add that card instead.
+base form is, and add the latter as a new card instead.
 
 """
 
@@ -56,34 +56,41 @@ import regex as re
 # Backlog/TODO
 
 # Port content cleanups (in the render() def) back into the card, via update()
-
-# Replace 'poliek' category with 'politiek' in nl cards.
-# And also the pipe '|' char in Verbuigingen lines.
-
 # Just replace all (just NL?) cards with the version from render() ie HTML=>text
 # That would solve a lot of the cleanup problems itself
-# But maybe check that newer/HTML cards don't have too many \n\n in them
-# eg 'nl/trappen' where parenthesized defs get two \n\n but it should be only one \n.
 # and HTML tables have \n\n between the row when it should just be one \n
 
-# Checked if rendered text is diff from stored text (in Anki DB).
-# If so, add a menu item (not a prompt) to update card. Then I can still ignore, if I want.
-# So, maybe also use the rendered text then when adding new cards? Or just enable the update menu option?
-# But, what about other langs?
-# Any good way to note cards that I've manually modified? eg just add my own tag CAD: somewhere?
-# And watch out for terminal color control codes, eg cards that have [architectuur] labels etc
+# Split the render() def into a render() that just returns text, and
+# make a separate highlight() that adds terminal escape codes, for color highlighting.
+# When checking if stored text is modified via render(), do that before calling highlight()
+# Or just return two strings from render()?
 
-# Use the existing [R]eplace prompt, but prompt (automatically?) any time the raw text (HTML) differs from the rendered text
+# Checked if rendered text is diff from stored text (in Anki DB).
+# If so, add a menu item to update card.
+# Not a prompt, just a menu item ([U]pdate]. Then I can still ignore, if I want.
+# Use the existing [R]eplace prompt, but prompt (automatically?) any time the raw text (HTML) differs from the rendered text.
+
+# So, maybe also use the rendered text then when adding new cards after fetching?
+# Or just enable the update menu option?
+# But, what about other langs? Test DE too
+
+# Any good way to note cards that I've manually modified? eg just add my own tag CAD: somewhere?
 
 # Anki add: replace cards with plain text and then either:
 # 1: put inflections # into another field/tag
 # 2:use single-line regex search to search # inflections/verbuigingen
 # (since there's no consistent ending to anchor with a regex)
 
+# Stop calling render() twice for every card
+
 # Since I'd also like to try to make formatted text versions for other
 # languages, maybe regex-based rendering isn't the most sustainable approach.
 # Would an XSLT, per source, make sense for the HTML def content?
 # https://www.w3schools.com/xml/xsl_intro.asp
+
+# Or convert HTML to Markdown?
+
+# Fix extraneous highlighting for wildcard searches (eg 'ver*')
 
 # Make constants for the keycodes, eg CTRL_C = '\x03'
 
@@ -258,22 +265,17 @@ def get_deck_names():
 
 def render(string, *, highlight=None, front=None, deck=None):
     # This is just makes the HTML string easier to read on the terminal console
-    # This changes are not saved in the cards
-    # TODO render HTML another way? eg as Markdown instead?
 
     # Specific to woorden.org
     # Before unescaping HTML entities: Replace (&lt; and &gt;) with ( and )
     string = re.sub(r'&lt;', '(', string)
-    string = re.sub(r'\&gt;', ')', string)
+    string = re.sub(r'&gt;', ')', string)
 
     # Replace HTML entities with unicode chars (for IPA symbols, etc)
     string = html.unescape(string)
 
     # Remove tags that are usually in the phonetic markup
-    string = re.sub(r'\<\/?a.*?\>', '', string)
-
-    # NL-specific (woorden.org)
-    string = re.sub(r'poliek', 'politiek', string)
+    string = re.sub(r'</?a.*?>', '', string)
 
     # NL-specific (or specific to woorden.org)
     # Segregate topical category names e.g. 'informeel'
@@ -330,12 +332,15 @@ def render(string, *, highlight=None, front=None, deck=None):
     category = None
     if match:
         category = match.group(1)
-        # Highlight it, if it's new, so you can (manually) update the 'categories' list above.
-        # We're doing a regex match here, since some of the category names might be a regex too.
+        # If this is a known category, just format it as such.
+        # (We're doing a regex match here, since a category name might be a regex.)
         if any([ re.search(c, category) for c in categories ]):
-            string = re.sub(r'<sup>(.*?)</sup>', '[\g<1>]', string)
+            string = re.sub(r'<sup>(.*?)</sup>', r'[\g<1>]', string)
         else:
-            string = re.sub(r'<sup>(.*?)</sup>', f'[{YELLOW_LT}\g<1>{RESET}]', string)
+            # Notify, so you can (manually) add this one to the 'categories' list above.
+            print(f'\nNew category [{YELLOW_LT}{category}{RESET}]\n')
+            beep()
+            time.sleep(1)
 
     # Specific to: PONS Großwörterbuch Deutsch als Fremdsprache
     string = re.sub('<span class="illustration">', '\n', string)
@@ -343,19 +348,27 @@ def render(string, *, highlight=None, front=None, deck=None):
     # HTML-specific:
     # Remove span tags, so that the text can stay on one line
     string = re.sub('<span.*?>', '', string)
-    string = re.sub('<\/span>', '', string)
+    string = re.sub('</span>', '', string)
     # These HTML tags are usually used inline and should not have a line break
-    string = re.sub('<[ibu]\/?>', '', string)
+    string = re.sub('<[ibu]/?>', '', string)
+
+    # Headings on their own line, add \n after, replace closing tag
+    string = re.sub(r'</h\d>\s*', '\n', string)
+
+    # Remove <td> tags.
+    # This means that <td> will be separated by \n and a <tr> by \n\n in the end.
+    # This is so that a single table row becomes a separate paragraph in text
+    string = re.sub('<td.*?>', '', string)
 
     # Replace remaining opening tags with a newline, since usually a new section
-    string = re.sub(r'\<[^/].*?\>', '\n', string)
+    string = re.sub(r'<[^/].*?>', '\n', string)
     # Remove remaining tags
-    string = re.sub(r'\<.*?\>', '', string)
+    string = re.sub(r'<.*?>', '', string)
     # Segregate pre-defined topical category names
     # Wrap in '[]', the names of topical fields.
     # (when it's last (and not first) on the line)
     categories_re = '|'.join(categories)
-    string = re.sub(f'(?m)(?<!^)\\s+({categories_re})$', ' [\g<1>]', string)
+    string = re.sub(f'(?m)(?<!^)\\s+({categories_re})$', r' [\g<1>]', string)
 
     # Non-HTML-specific:
     # Collapse sequences of space/tab chars
@@ -367,7 +380,7 @@ def render(string, *, highlight=None, front=None, deck=None):
     # Remove hover tip on IPA pronunciation
     string = re.sub(r'(?s)<a class="?help"? .*?>', '', string)
     # Ensure headings begin on their own line (also covers plural forms, eg "Synoniemen")
-    string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', '\n\g<1>', string)
+    string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem|zelfst\.)', r'\n\g<1>', string)
     # Remove seperators in plurals (eg in the section: "Verbuigingen")
     # (NB, just for display here; this doesn't help with matching)
     string = re.sub(r'\|', '', string)
@@ -375,11 +388,13 @@ def render(string, *, highlight=None, front=None, deck=None):
     # NL-specific: Newlines before example `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
     # (using a negative lookbehind assertion here)
-    string = re.sub(r'(?<!\n)(`.*?`)', '\n\g<1>', string)
+    string = re.sub(r'(?<!\n)(`.*?`)', r'\n\g<1>', string)
 
     # NL-specific: Ensure that Voorbeeld(en): has a \n\n before it,
     # to make the actual defnition stand out more.
-    string = re.sub(r'(?<!\n\n)(Voorbeeld(en)?:)', '\n\n\g<1>', string)
+    string = re.sub(r'(?<!\n\n)(Voorbeeld(en)?:)', r'\n\n\g<1>', string)
+    # And only one \n after
+    string = re.sub(r'(?m)(Voorbeeld(en)?:.*?$)(\n\n+)', r'\g<1>\n', string)
 
     # Max 2x newlines in a row
     string = re.sub(r'\n{3,}', '\n\n', string)
@@ -388,10 +403,13 @@ def render(string, *, highlight=None, front=None, deck=None):
     string = re.sub(r'(?m)^ +', '', string)
     string = re.sub(r'(?m) +$', '', string)
 
-    # DE-specific: Newlines before each definition on the card, marked by eg: 2.
-    string = re.sub(r';?\s*(\d+\.)', '\n\n\g<1>', string)
-    # And sub-definitions, marked by eg: a) or b)
-    string = re.sub(r';?\s+([a-z]\)\s+)', '\n  \g<1>', string)
+    # DE-specific:
+    # Ensure new sections on a new line, eg I. II. III. IV.
+    string = re.sub(r'\s+(I{1,3}V?\.)', r'\n\n\g<1>', string)
+    # Newlines before each definition on the card, marked by eg: 1. or 2.
+    string = re.sub(r';?\s*(\d+\.)', r'\n\n\g<1>', string)
+    # And sub-definitions, also indented, marked by eg: a) or b)
+    string = re.sub(r';?\s+([a-z]\)\s+)', r'\n  \g<1>', string)
 
     # Delete leading/trailing space on the entry as a whole
     string = re.sub(r'^\s+', '', string)
@@ -403,7 +421,7 @@ def render(string, *, highlight=None, front=None, deck=None):
 
     if front:
         # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)
-        string = re.sub(f'^\s*{front}\s*', '', string)
+        string = re.sub(r'^\s*' + front + r'\s*', '', string)
 
     # TODO refactor this out
     if highlight and deck:
@@ -425,7 +443,7 @@ def render(string, *, highlight=None, front=None, deck=None):
         # eg ledemaat => ledemat
         # So that can now also match 'ledematen'
         # This is because the examples in the 'back' field will include declined forms
-        collapsed = re.sub(r'(.)\1', '\g<1>', highlight)
+        collapsed = re.sub(r'(.)\1', r'\g<1>', highlight)
         if collapsed != highlight:
             highlights.add(collapsed)
 
@@ -463,7 +481,7 @@ def render(string, *, highlight=None, front=None, deck=None):
             for match in matches:
 
                 # Remove separators, e.g. in "Verbuigingen: uitlaatgas|sen (...)"
-                match = re.sub(r'|', '', match)
+                match = re.sub(r'\|', '', match)
 
                 # If past participle, remove the 'is' or 'heeft'
                 # Sometimes as eg: uitrusten: 'is, heeft uitgerust' or 'heeft, is uitgerust'
@@ -472,7 +490,8 @@ def render(string, *, highlight=None, front=None, deck=None):
                 match = re.sub(r'\bzich\b', '', match)
 
                 # This is for descriptions with a placeholder char like:
-                # "kind - Verbuigingen: -eren" : "kinderen", or "'s" for "homo" => "homo's"
+                # "kind": "Verbuigingen: -eren" => "kinderen"
+                # "homo": "'s" => "homo's"
                 match = re.sub(r"^[-'~]", front_or_highlight, match)
 
                 # plural nouns with multiple declensions, CSV
@@ -573,10 +592,10 @@ def render(string, *, highlight=None, front=None, deck=None):
             # Just do case-insensitive highlighting.
             # NB, the (?i:...) doesn't create a group.
             # That's why ({highlight}) needs it's own parens here.
-            string = re.sub(f"(?i:({highlight_re}))", f"{YELLOW}\g<1>{RESET}", string)
+            string = re.sub(f"(?i:({highlight_re}))", YELLOW + r'\g<1>' + RESET, string)
 
     if front:
-        # And the front back canonically
+        # And re-add the front canonically
         string = YELLOW + front + RESET + '\n\n' + string
 
     return string
@@ -617,7 +636,7 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     # TODO consider a stemming library here?
     if deck == 'nl':
         while True:
-            next_term = re.sub(r'(.)\1', '\g<1>', search_term, count=1)
+            next_term = re.sub(r'(.)\1', r'\g<1>', search_term, count=1)
             if next_term == search_term:
                 break
             terms += [next_term]
@@ -993,7 +1012,7 @@ def main(deck):
             # And make the 4 a constant BORDERS_HEIGHT
             info_print()
             print("\n" * lines_n)
-        print(rendered, "\n")
+        print('\n' + rendered + '\n')
 
         if term and not content:
             info_print("No results: " + term)

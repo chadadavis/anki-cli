@@ -332,7 +332,7 @@ def normalizer(string, *, term=None):
         # If this is a known category, just format it as such.
         # (We're doing a regex match here, since a category name might be a regex.)
         if any([ re.search(c, category) for c in categories ]):
-            string = re.sub(r'<sup>(.*?)</sup>', r'[\g<1>]', string)
+            string = re.sub(r'<sup>(.*?)</sup>', r'[\1]', string)
         else:
             # Notify, so you can (manually) add this one to the 'categories' list above.
             print(f'\nNew category [{YELLOW_LT}{category}{RESET}]\n')
@@ -372,7 +372,7 @@ def normalizer(string, *, term=None):
     # Wrap in '[]', the names of topical fields.
     # (when it's last (and not first) on the line)
     categories_re = '|'.join(categories)
-    string = re.sub(f'(?m)(?<!^)\\s+({categories_re})$', r' [\g<1>]', string)
+    string = re.sub(f'(?m)(?<!^)\\s+({categories_re})$', r' [\1]', string)
 
     # Non-HTML-specific:
     # Collapse sequences of space/tab chars
@@ -384,36 +384,36 @@ def normalizer(string, *, term=None):
     # Remove hover tip on IPA pronunciation
     string = re.sub(r'(?s)<a class="?help"? .*?>', '', string)
     # Ensure headings begin on their own line (also covers plural forms, eg "Synoniemen")
-    string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', r'\n\g<1>', string)
+    string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', r'\n\1', string)
 
     # NL-specific: Ensure that Voorbeeld(en): has a \n\n before it,
     # to make the actual defnition stand out more.
-    string = re.sub(r'(?<!\n\n)(Voorbeeld(en)?:)', r'\n\n\g<1>', string)
+    string = re.sub(r'(?<!\n\n)(Voorbeeld(en)?:)', r'\n\n\1', string)
     # And only one \n after the line
-    string = re.sub(r'(?m)(Voorbeeld(en)?:.*?$)(\n\n+)', r'\g<1>\n', string)
+    string = re.sub(r'(?m)(Voorbeeld(en)?:.*?$)(\n\n+)', r'\1\n', string)
 
-    string = re.sub(r'(?m)(^(Vervoeging(en)?|Verbuiging(en)?):)(\s*)', r'\g<1>\n', string)
+    string = re.sub(r'(?m)(^(Vervoeging(en)?|Verbuiging(en)?):)(\s*)', r'\1\n', string)
 
     # NL-specific: Newlines before example `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
     # (using a negative lookbehind assertion here)
-    string = re.sub(r'(?<!\n)(`.*?`)', r'\n\g<1>', string)
+    string = re.sub(r'(?<!\n)(`.*?`)', r'\n\1', string)
 
     # Remove seperators in plurals (eg in the section: "Verbuigingen")
     string = re.sub(r'\|', '', string)
 
     # Ensure 1) and 2) sections start a new paragraph
-    string = re.sub(r'(?m)^(\d+\))', r'\n\n\g<1>', string)
+    string = re.sub(r'(?m)^(\d+\))', r'\n\n\1', string)
     # Ensure new sections start a new paragraph, eg I. II. III. IV.
-    string = re.sub(r'(?m)^(I{1,3}V?\s+)', r'\n\n\g<1>', string)
+    string = re.sub(r'(?m)^(I{1,3}V?\s+)', r'\n\n\1', string)
 
     # DE-specific:
     # Ensure new sections start a new paragraph, eg I. II. III. IV.
-    string = re.sub(r'\s+(I{1,3}V?\.)', r'\n\n\g<1>', string)
+    string = re.sub(r'\s+(I{1,3}V?\.)', r'\n\n\1', string)
     # New paragraph for each definition on the card, marked by eg: 1. or 2.
-    string = re.sub(r';?\s*(\d+\.)', r'\n\n\g<1>', string)
+    string = re.sub(r';?\s*(\d+\.)', r'\n\n\1', string)
     # And sub-definitions, also indented, marked by eg: a) or b)
-    string = re.sub(r';?\s+([a-z]\)\s+)', r'\n  \g<1>', string)
+    string = re.sub(r';?\s+([a-z]\)\s+)', r'\n  \1', string)
 
     # Max 2x newlines in a row
     string = re.sub(r'(\s*\n\s*){3,}', '\n\n', string)
@@ -426,7 +426,7 @@ def normalizer(string, *, term=None):
     string = re.sub(r'^\s+', '', string)
 
     # Canonical final newline
-    string = re.sub(r'\s*\Z', '', string)
+    string = re.sub(r'\s*$', '', string)
     string = string + '\n'
 
     if term:
@@ -457,7 +457,7 @@ def highlighter(string, query, *, term=None, deck=None):
     # eg ledemaat => ledemat
     # So that can now also match 'ledematen'
     # This is because the examples in the 'back' field will include declined forms
-    collapsed = re.sub(r'(.)\1', r'\g<1>', query)
+    collapsed = re.sub(r'(.)\1', r'\1', query)
     if collapsed != query:
         highlights.add(collapsed)
 
@@ -607,7 +607,7 @@ def highlighter(string, query, *, term=None, deck=None):
         # Just do case-insensitive highlighting.
         # NB, the (?i:...) doesn't create a group.
         # That's why ({highlight}) needs it's own parens here.
-        string = re.sub(f"(?i:({highlight_re}))", YELLOW + r'\g<1>' + RESET, string)
+        string = re.sub(f"(?i:({highlight_re}))", YELLOW + r'\1' + RESET, string)
 
     return string
 
@@ -647,7 +647,7 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     # TODO consider a stemming library here?
     if deck == 'nl':
         while True:
-            next_term = re.sub(r'(.)\1', r'\g<1>', search_term, count=1)
+            next_term = re.sub(r'(.)\1', r'\1', search_term, count=1)
             if next_term == search_term:
                 break
             terms += [next_term]

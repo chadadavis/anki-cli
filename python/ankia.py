@@ -52,45 +52,30 @@ from nltk.stem.snowball import SnowballStemmer
 # "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
 import regex as re
 
+# This bogus def just makes it easier for me to jump here in my editor
+def backlog():
+    ...
 
 # Backlog/TODO
 
-# Port content cleanups (in the render() def) back into the card, via update()
-# Just replace all (just NL?) cards with the version from render() ie HTML=>text
-# That would solve a lot of the cleanup problems itself
-# and HTML tables have \n\n between the row when it should just be one \n
+# Doc: in Anki, my text-only changes imply using the raw source editor, to edit the raw text of a card: Ctrl-Shift-x
+# And cards need to use the CSS style: "white-space: pre-wrap;"
 
-# Split the render() def into a render() that just returns text, and
-# make a separate highlight() that adds terminal escape codes, for color highlighting.
-# When checking if stored text is modified via render(), do that before calling highlight()
-# Or just return two strings from render()?
-
-# Checked if rendered text is diff from stored text (in Anki DB).
-# If so, add a menu item to update card.
-# Not a prompt, just a menu item ([U]pdate]. Then I can still ignore, if I want.
-# Use the existing [R]eplace prompt, but prompt (automatically?) any time the raw text (HTML) differs from the rendered text.
-
-# So, maybe also use the rendered text then when adding new cards after fetching?
-# Or just enable the update menu option?
-# But, what about other langs? Test DE too
-
-# Any good way to note cards that I've manually modified? eg just add my own tag CAD: somewhere?
-
-# Anki add: replace cards with plain text and then either:
-# 1: put inflections # into another field/tag
-# 2:use single-line regex search to search # inflections/verbuigingen
-# (since there's no consistent ending to anchor with a regex)
-
-# Stop calling render() twice for every card
+# Bulk replace all cards (which langs?) with the version from normalizer() ie HTML=>text
 
 # Since I'd also like to try to make formatted text versions for other
 # languages, maybe regex-based rendering isn't the most sustainable approach.
+
+# Convert HTML to Markdown?
+
+# Consider library html2text
+
 # Would an XSLT, per source, make sense for the HTML def content?
 # https://www.w3schools.com/xml/xsl_intro.asp
 
-# Or convert HTML to Markdown?
-
-# Fix extraneous highlighting for wildcard searches (eg 'ver*')
+# Replace regex doc parsing with eg
+# https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
+# And use CSS selectors to extract content more robustly
 
 # Make constants for the keycodes, eg CTRL_C = '\x03'
 
@@ -101,7 +86,7 @@ import regex as re
 # All addons:
 # https://ankiweb.net/shared/addons/
 
-# note markup for antonyms - or check API -
+# Bug in FR: note markup for antonyms - or check API -
 # else replace <span class="Ant"> with something else (e.g. franc != menteur)
 
 # bug with NL results from FD (for when Woorden isn't working).
@@ -110,11 +95,9 @@ import regex as re
 
 # Terminal display - pager
 # Pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
+# eg: subprocess.run(['less', '--quit-if-one-screen'], input=some_str)
 # https://stackoverflow.com/a/39587824/256856
 # https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
-
-# And any way to left-indent all output to the console, globally (eg 2-4 chars, because window borders, etc)
-# Maybe also via textwrap ?
 
 # Use freeDictionary API, so as to need less regex parsing
 # https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
@@ -124,10 +107,6 @@ import regex as re
 
 # Add nl-specific etymology?
 # https://etymologiebank.nl/
-
-# Replace regex doc parsing with eg
-# https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
-# And use CSS selectors to extract content more robustly
 
 # Repo/Packaging:
 # figure out how to package deps (eg readchar) and test it again after removing local install of readchar
@@ -158,7 +137,7 @@ import regex as re
 # Get IPA from Wiktionary (rather than FreeDictionary)?
 # And maybe later think about how to combine/concat these also to the same anki card ...
 
-# TODO Address Pylance
+# TODO Address Pylance issues
 
 # Logging:
 # look for log4j style debug mode console logging/printing (with colors)
@@ -263,19 +242,37 @@ def get_deck_names():
     return names
 
 
-def render(string, *, highlight=None, front=None, deck=None):
-    # This is just makes the HTML string easier to read on the terminal console
+def renderer(string, query=None, *, term=None, deck=None):
+    """For displaying (already normalized) definition entries on the terminal/console/CLI"""
+
+    # Prepend term in canonical format, for display only
+    if term:
+        string = term + "\n\n" + string
+
+    string = wrapper(string)
+    # Ensure one newline at the end
+    string = re.sub(r'\n*$', '\n', string)
+    string = highlighter(string, query, term=term, deck=deck)
+
+    return string
+
+
+def normalizer(string, *, term=None):
+    """Converts HTML to text, for saving in Anki DB"""
 
     # Specific to woorden.org
     # Before unescaping HTML entities: Replace (&lt; and &gt;) with ( and )
     string = re.sub(r'&lt;', '(', string)
     string = re.sub(r'&gt;', ')', string)
+    string = re.sub(r'&nbsp;', ' ', string)
+    # Other superfluous chars:
+    string = re.sub(r'《/?em》', '', string)
 
     # Replace HTML entities with unicode chars (for IPA symbols, etc)
     string = html.unescape(string)
 
     # Remove tags that are usually in the phonetic markup
-    string = re.sub(r'</?a.*?>', '', string)
+    string = re.sub(r'</?a\s+.*?>', '', string)
 
     # NL-specific (or specific to woorden.org)
     # Segregate topical category names e.g. 'informeel'
@@ -346,24 +343,26 @@ def render(string, *, highlight=None, front=None, deck=None):
     string = re.sub('<span class="illustration">', '\n', string)
 
     # HTML-specific:
-    # Remove span tags, so that the text can stay on one line
-    string = re.sub('<span.*?>', '', string)
-    string = re.sub('</span>', '', string)
-    # These HTML tags are usually used inline and should not have a line break
-    string = re.sub('<[ibu]/?>', '', string)
+    # Remove span/font tags, so that the text can stay on one line
+    string = re.sub(r'<span\s+.*?>', '', string)
+    string = re.sub(r'<font\s+.*?>', '', string)
+    # These HTML tags <i> <b> <u> are usually used inline and should not have a line break
+    string = re.sub(r'<[ibu]/?>', '', string)
 
-    # Headings on their own line, add \n after, replace closing tag
+    string = re.sub(r'<br\s*/?>', '\n\n', string)
+
+    # Headings on their own line, by replacing the closing tag with \n
     string = re.sub(r'</h\d>\s*', '\n', string)
 
-    # Remove <td> tags.
-    # This means that <td> will be separated by \n and a <tr> by \n\n in the end.
-    # This is so that a single table row becomes a separate paragraph in text
-    string = re.sub('<td.*?>', '', string)
+    # Tables, with \n\n between rows
+    string = re.sub(r'<td.*?>', '', string)
+    string = re.sub(r'<tr.*?>', '\n\n', string)
 
     # Replace remaining opening tags with a newline, since usually a new section
     string = re.sub(r'<[^/].*?>', '\n', string)
-    # Remove remaining tags
+    # Remove remaining (closing) tags
     string = re.sub(r'<.*?>', '', string)
+
     # Segregate pre-defined topical category names
     # Wrap in '[]', the names of topical fields.
     # (when it's last (and not first) on the line)
@@ -380,223 +379,230 @@ def render(string, *, highlight=None, front=None, deck=None):
     # Remove hover tip on IPA pronunciation
     string = re.sub(r'(?s)<a class="?help"? .*?>', '', string)
     # Ensure headings begin on their own line (also covers plural forms, eg "Synoniemen")
-    string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem|zelfst\.)', r'\n\g<1>', string)
-    # Remove seperators in plurals (eg in the section: "Verbuigingen")
-    # (NB, just for display here; this doesn't help with matching)
-    string = re.sub(r'\|', '', string)
+    string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', r'\n\g<1>', string)
+
+    # NL-specific: Ensure that Voorbeeld(en): has a \n\n before it,
+    # to make the actual defnition stand out more.
+    string = re.sub(r'(?<!\n\n)(Voorbeeld(en)?:)', r'\n\n\g<1>', string)
+    # And only one \n after the line
+    string = re.sub(r'(?m)(Voorbeeld(en)?:.*?$)(\n\n+)', r'\g<1>\n', string)
+
+    string = re.sub(r'(?m)(^(Vervoeging(en)?|Verbuiging(en)?):)(\s*)', r'\g<1>\n', string)
 
     # NL-specific: Newlines before example `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
     # (using a negative lookbehind assertion here)
     string = re.sub(r'(?<!\n)(`.*?`)', r'\n\g<1>', string)
 
-    # NL-specific: Ensure that Voorbeeld(en): has a \n\n before it,
-    # to make the actual defnition stand out more.
-    string = re.sub(r'(?<!\n\n)(Voorbeeld(en)?:)', r'\n\n\g<1>', string)
-    # And only one \n after
-    string = re.sub(r'(?m)(Voorbeeld(en)?:.*?$)(\n\n+)', r'\g<1>\n', string)
+    # Remove seperators in plurals (eg in the section: "Verbuigingen")
+    string = re.sub(r'\|', '', string)
 
-    # Max 2x newlines in a row
-    string = re.sub(r'\n{3,}', '\n\n', string)
-
-    # Delete leading/trailing space per line
-    string = re.sub(r'(?m)^ +', '', string)
-    string = re.sub(r'(?m) +$', '', string)
+    # Ensure 1) and 2) sections start a new paragraph
+    string = re.sub(r'(?m)^(\d+\))', r'\n\n\g<1>', string)
+    # Ensure new sections start a new paragraph, eg I. II. III. IV.
+    string = re.sub(r'(?m)^(I{1,3}V?\s+)', r'\n\n\g<1>', string)
 
     # DE-specific:
-    # Ensure new sections on a new line, eg I. II. III. IV.
+    # Ensure new sections start a new paragraph, eg I. II. III. IV.
     string = re.sub(r'\s+(I{1,3}V?\.)', r'\n\n\g<1>', string)
-    # Newlines before each definition on the card, marked by eg: 1. or 2.
+    # New paragraph for each definition on the card, marked by eg: 1. or 2.
     string = re.sub(r';?\s*(\d+\.)', r'\n\n\g<1>', string)
     # And sub-definitions, also indented, marked by eg: a) or b)
     string = re.sub(r';?\s+([a-z]\)\s+)', r'\n  \g<1>', string)
 
-    # Delete leading/trailing space on the entry as a whole
+    # Max 2x newlines in a row
+    string = re.sub(r'(\s*\n\s*){3,}', '\n\n', string)
+
+    # Delete leading/trailing space on each line
+    string = re.sub(r'(?m)^ +', '', string)
+    string = re.sub(r'(?m) +$', '', string)
+
+    # Delete leading space on the entry as a whole
     string = re.sub(r'^\s+', '', string)
-    string = re.sub(r'\s+$', '', string)
 
-    if string:
-        # Canonical newline to end
-        string = string + "\n"
+    # Canonical final newline
+    string = re.sub(r'\s*\Z', '', string)
+    string = string + '\n'
 
-    if front:
-        # Strip the term from the start of the definition, if present (redundant for infinitives, adjectives, etc)
-        string = re.sub(r'^\s*' + front + r'\s*', '', string)
+    if term:
+        # Strip redundant term at start of card
+        string = re.sub(r'^\s*' + term + r'\s*', r'', string)
 
-    # TODO refactor this out
-    if highlight and deck:
-        highlight = re.sub(r'[.]', r'\.', highlight)
-        highlight = re.sub(r'[_]', r'.', highlight)
+    return string
 
-        # Even though this is a raw string, the '\' needs to be escaped, because
-        # the 're' module throws an exception for any escape sequences that are
-        # not valid in a standard string. (The 'regex' module doesn't.)
-        # https://learnbyexample.github.io/py_regular_expressions/gotchas.html
-        # https://docs.python.org/3/library/re.html#re.sub
-        # "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
-        highlight = re.sub(r'[*]', r'[^ ]*', highlight)
 
-        # Terms to highlight, in addition to the query term
-        highlights = { highlight }
+def highlighter(string, query, *, term=None, deck=None):
 
-        # Collapse double letters in the search term
-        # eg ledemaat => ledemat
-        # So that can now also match 'ledematen'
-        # This is because the examples in the 'back' field will include declined forms
-        collapsed = re.sub(r'(.)\1', r'\g<1>', highlight)
-        if collapsed != highlight:
-            highlights.add(collapsed)
+    # Map wildcard search chars to regex syntax
+    query = re.sub(r'[.]', r'\.', query)
+    query = re.sub(r'[_]', r'.', query)
 
-        if front:
-            # Also highlight the canonical form, in case the search term was different
-            highlights.add(front)
+    # Even though this is a raw string, the '\' needs to be escaped, because
+    # the 're' module raises an exception for any escape sequences that are
+    # not valid in a standard string. (The 'regex' module doesn't.)
+    # https://learnbyexample.github.io/py_regular_expressions/gotchas.html
+    # https://docs.python.org/3/library/re.html#re.sub
+    # "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
+    query = re.sub(r'[*]', r'[^ ]*', query)
 
-        # TODO also factor out the stemming (separate from highlighting, since lang-specific)
+    # Terms to highlight
+    highlights = { query }
 
+    # Collapse double letters in the search term
+    # eg ledemaat => ledemat
+    # So that can now also match 'ledematen'
+    # This is because the examples in the 'back' field will include declined forms
+    collapsed = re.sub(r'(.)\1', r'\g<1>', query)
+    if collapsed != query:
+        highlights.add(collapsed)
+
+    if term:
+        # Also highlight the canonical form, in case the search query was different
+        highlights.add(term)
+
+    term_or_query = unidecode.unidecode(term or query)
+
+    # TODO also factor out the stemming (separate from highlighting, since lang-specific)
+    if deck:
         # Map e.g. 'de' to 'german', as required by SnowballStemmer
         lang = languages.get(alpha2=deck).name.lower()
         stemmer = SnowballStemmer(lang)
-        stem = stemmer.stem(highlight)
-        if stem != highlight:
+        stem = stemmer.stem(query)
+        if stem != query:
             highlights.add(stem)
-        front_or_highlight = unidecode.unidecode(front or highlight)
 
-        # Language/source-specific extraction of inflected forms
-        if deck == 'nl':
-            # Hack stemming, assuming -en suffix
-            # For cases: verb infinitives, or plural nouns without singular
-            # eg ski-ën, hersen-en
-            highlights.add( re.sub(r'en$', r'\\S*', front_or_highlight) )
+    # Language/source-specific extraction of inflected forms
+    if deck == 'nl':
+        # Hack stemming, assuming -en suffix
+        # For cases: verb infinitives, or plural nouns without singular
+        # eg ski-ën, hersen-en
+        highlights.add( re.sub(r'en$', r'\\S*', term_or_query) )
 
-            # Find given inflections
+        # Find given inflections
 
-            matches = []
-            # Theoretically, we could not have a double loop here, but this makes it easier to read.
-            # There can be multiple inflections in one line (eg prijzen), so it's easier to have two loops.
-            for inflection in re.findall(r'(?ms)^(?:Vervoegingen|Verbuigingen):\s*(.*?)\s*\n{1,2}', string):
-                # There is not always a parenthetical part-of-speech after the inflection of plurals.
-                # Sometimes it's just eol (eg "nederlaag") . So, it ends either with eol $ or open paren (
-                matches += re.findall(r'(?s)(?:\)|^)\s*(.+?)\s*(?:\(|$)', inflection)
+        matches = []
+        # Theoretically, we could not have a double loop here, but this makes it easier to read.
+        # There can be multiple inflections in one line (eg prijzen), so it's easier to have two loops.
+        for inflection in re.findall(r'(?ms)^(?:Vervoegingen|Verbuigingen):\s*(.*?)\s*\n{1,2}', string):
+            # There is not always a parenthetical part-of-speech after the inflection of plurals.
+            # Sometimes it's just eol (eg "nederlaag") . So, it ends either with eol $ or open paren (
+            matches += re.findall(r'(?s)(?:\)|^)\s*(.+?)\s*(?:\(|$)', inflection)
 
-            for match in matches:
+        for match in matches:
 
-                # Remove separators, e.g. in "Verbuigingen: uitlaatgas|sen (...)"
-                match = re.sub(r'\|', '', match)
+            # Remove separators, e.g. in "Verbuigingen: uitlaatgas|sen (...)"
+            match = re.sub(r'\|', '', match)
 
-                # If past participle, remove the 'is' or 'heeft'
-                # Sometimes as eg: uitrusten: 'is, heeft uitgerust' or 'heeft, is uitgerust'
-                match = re.sub(r'^(is|heeft)(,\s+(is|heeft))?\s+', '', match)
-                # And the reflexive portion 'zich' isn't necessary, eg: "begeven"
-                match = re.sub(r'\bzich\b', '', match)
+            # If past participle, remove the 'is' or 'heeft'
+            # Sometimes as eg: uitrusten: 'is, heeft uitgerust' or 'heeft, is uitgerust'
+            match = re.sub(r'^(is|heeft)(,\s+(is|heeft))?\s+', '', match)
+            # And the reflexive portion 'zich' isn't necessary, eg: "begeven"
+            match = re.sub(r'\bzich\b', '', match)
 
-                # This is for descriptions with a placeholder char like:
-                # "kind": "Verbuigingen: -eren" => "kinderen"
-                # "homo": "'s" => "homo's"
-                match = re.sub(r"^[-'~]", front_or_highlight, match)
+            # This is for descriptions with a placeholder char like:
+            # "kind": "Verbuigingen: -eren" => "kinderen"
+            # "homo": "'s" => "homo's"
+            match = re.sub(r"^[-'~]", term_or_query, match)
 
-                # plural nouns with multiple declensions, CSV
-                # eg waarde => waarden, waardes
-                if ',' in match:
-                    highlights.update(re.split(r',\s*', match))
-                    match = ''
+            # plural nouns with multiple declensions, CSV
+            # eg waarde => waarden, waardes
+            if ',' in match:
+                highlights.update(re.split(r',\s*', match))
+                match = ''
 
-                # Collapse spaces, and trim
-                match = re.sub(r'\s+', ' ', match)
-                match = match.strip()
+            # Collapse spaces, and trim
+            match = re.sub(r'\s+', ' ', match)
+            match = match.strip()
 
-                # Hack stemming for infinitive forms with a consonant change in simple past tense:
-                # dreef => drij(ven) => drij(f)
-                # koos => kie(zen) => kie(s)
-                if front_or_highlight.endswith('ven') and match.endswith('f'):
-                    highlights.add( re.sub(r'ven$', '', front_or_highlight) + 'f' )
-                if front_or_highlight.endswith('zen') and match.endswith('s'):
-                    highlights.add( re.sub(r'zen$', '', front_or_highlight) + 's' )
+            # Hack stemming for infinitive forms with a consonant change in simple past tense:
+            # dreef => drij(ven) => drij(f)
+            # koos => kie(zen) => kie(s)
+            if term_or_query.endswith('ven') and match.endswith('f'):
+                highlights.add( re.sub(r'ven$', '', term_or_query) + 'f' )
+            if term_or_query.endswith('zen') and match.endswith('s'):
+                highlights.add( re.sub(r'zen$', '', term_or_query) + 's' )
 
-                # Allow separable verbs to be separated, in both directions.
-                # ineenstorten => 'stortte ineen'
-                # TODO BUG capture canonical forms that end with known prepositions (make a list)
-                # eg teruggaan op => ging terug op (doesn't work here)
-                # We should maybe just remove the trailing preposition (if it was also a trailing word in the 'front')
-                if separable := re.findall(r'^(\S+)\s+(\S+)$', match):
-                    # NB, the `pre` is anchored with \b because the prepositions
-                    # are short and there would otherwise be many false positive
-                    # matches
+            # Allow separable verbs to be separated, in both directions.
+            # ineenstorten => 'stortte ineen'
+            # TODO BUG capture canonical forms that end with known prepositions (make a list)
+            # eg teruggaan op => ging terug op (doesn't work here)
+            # We should maybe just remove the trailing preposition (if it was also a trailing word in the 'front')
+            if separable := re.findall(r'^(\S+)\s+(\S+)$', match):
+                # NB, the `pre` is anchored with \b because the prepositions
+                # are short and there would otherwise be many false positive
+                # matches
 
-                    # eg stortte, ineen
-                    (conjugated, pre), = separable
-                    highlights.add( f'{conjugated}.*?\\b{pre}\\b' )
-                    highlights.add( f'\\b{pre}\\b.*?{conjugated}' )
+                # eg stortte, ineen
+                (conjugated, pre), = separable
+                highlights.add( f'{conjugated}.*?\\b{pre}\\b' )
+                highlights.add( f'\\b{pre}\\b.*?{conjugated}' )
 
-                    # eg storten
-                    base = re.sub(f'^{pre}', '', front_or_highlight)
-                    highlights.add( f'{base}.*?\\b{pre}\\b' )
-                    highlights.add( f'\\b{pre}\\b.*?{base}' )
+                # eg storten
+                base = re.sub(f'^{pre}', '', term_or_query)
+                highlights.add( f'{base}.*?\\b{pre}\\b' )
+                highlights.add( f'\\b{pre}\\b.*?{base}' )
 
-                    # eg stort
-                    stem = re.sub(f'en$', '', base)
-                    highlights.add( f'{stem}.*?\\b{pre}\\b' )
-                    highlights.add( f'\\b{pre}\\b.*?{stem}' )
+                # eg stort
+                stem = re.sub(f'en$', '', base)
+                highlights.add( f'{stem}.*?\\b{pre}\\b' )
+                highlights.add( f'\\b{pre}\\b.*?{stem}' )
 
-                    match = ''
+                match = ''
 
-                if match:
-                    highlights.add(match)
+            if match:
+                highlights.add(match)
 
-        elif deck == 'de':
-            if front_or_highlight.endswith('en'):
-                highlights.add( re.sub(r'en$', '', front_or_highlight) )
+    elif deck == 'de':
+        if term_or_query.endswith('en'):
+            highlights.add( re.sub(r'en$', '', term_or_query) )
 
-            # TODO use the debugger to test
-            # DE: <gehst, ging, ist gegangen> gehen
+        # TODO use the debugger to test
+        # DE: <gehst, ging, ist gegangen> gehen
 
-            # Could also get the conjugations via the section (online):
-            # Collins German Verb Tables (and for French, English)
-            # Or try Verbix? (API? Other APIs online for inflected forms?)
-            ...
-        elif deck == 'en':
-            ...
-            # TODO
-            # EN: v. walked, walk·ing, walks
+        # Could also get the conjugations via the section (online):
+        # Collins German Verb Tables (and for French, English)
+        # Or try Verbix? (API? Other APIs online for inflected forms?)
+        ...
+    elif deck == 'en':
+        ...
+        # TODO
+        # EN: v. walked, walk·ing, walks
 
-        else:
-            ...
+    else:
+        ...
 
-        # Sort the highlight terms so that the longest are first.
-        # Since inflections might be prefixes.
-        # i.e. this will prefer matching 'kinderen' before 'kind'
-        highlight_re = '|'.join(reversed(sorted(highlights, key=len)))
+    # Sort the highlight terms so that the longest are first.
+    # Since inflections might be prefixes.
+    # i.e. this will prefer matching 'kinderen' before 'kind'
+    highlight_re = '|'.join(reversed(sorted(highlights, key=len)))
 
-        # Highlight accent-insensitive:
-        # Start on a copy without accents:
-        string_decoded = unidecode.unidecode(string)
-        # NB, the string length will be the same if accents are simply removed.
-        # However, chars like the German 'ß' could make the decoded longer.
-        # So, first test if it's safe to use this position-based approach:
-        if len(string) == len(string_decoded):
-            # And the terms to highlight need to be normalized then too:
-            highlight_re_decoded = unidecode.unidecode(highlight_re)
-            # Get all match position intervals (half-open intervals)
-            i = re.finditer(f"(?i:{highlight_re_decoded})", string_decoded)
-            spans = [m.span() for m in i]
-            l = list(string)
-            # Process the string back-to-front, since inserting changes indexes
-            for t in reversed(spans):
-                x,y = t
-                # Also, here, y before x, since back-to-front
-                l.insert(y, RESET)
-                l.insert(x, YELLOW)
+    # Highlight accent-insensitive:
+    # Start on a copy without accents:
+    string_decoded = unidecode.unidecode(string)
+    # NB, the string length will be the same if accents are simply removed.
+    # However, chars like the German 'ß' could make the decoded longer.
+    # So, first test if it's safe to use this position-based approach:
+    if len(string) == len(string_decoded):
+        # And the terms to highlight need to be normalized then too:
+        highlight_re_decoded = unidecode.unidecode(highlight_re)
+        # Get all match position intervals (half-open intervals)
+        i = re.finditer(f"(?i:{highlight_re_decoded})", string_decoded)
+        spans = [m.span() for m in i]
+        l = list(string)
+        # Process the string back-to-front, since inserting changes indexes
+        for t in reversed(spans):
+            x,y = t
+            # Also, here, y before x, since back-to-front
+            l.insert(y, RESET)
+            l.insert(x, YELLOW)
 
-            string = ''.join(l)
-        else:
-            # We can't do accent-insensitive hightlighting.
-            # Just do case-insensitive highlighting.
-            # NB, the (?i:...) doesn't create a group.
-            # That's why ({highlight}) needs it's own parens here.
-            string = re.sub(f"(?i:({highlight_re}))", YELLOW + r'\g<1>' + RESET, string)
-
-    if front:
-        # And re-add the front canonically
-        string = YELLOW + front + RESET + '\n\n' + string
+        string = ''.join(l)
+    else:
+        # We can't do accent-insensitive hightlighting.
+        # Just do case-insensitive highlighting.
+        # NB, the (?i:...) doesn't create a group.
+        # That's why ({highlight}) needs it's own parens here.
+        string = re.sub(f"(?i:({highlight_re}))", YELLOW + r'\g<1>' + RESET, string)
 
     return string
 
@@ -899,31 +905,30 @@ def wrapper(string):
         line_wrap = textwrap.wrap(line, WRAP_WIDTH, replace_whitespace=False, drop_whitespace=False)
         line_wrap = line_wrap or ['']
         lines_wrapped += line_wrap
-    string = "\n".join(lines_wrapped)
+    string = "\n ".join(lines_wrapped)
     return string
 
 
-def render_card(card, *, term=None):
-    f = card['fields']['Front']['value']
-    b = card['fields']['Back']['value']
+def normalize_card(card):
+    # TODO make a class for a Card ?
+    front = card['fields']['Front']['value']
+    back = card['fields']['Back']['value']
     deck = card['deckName']
+    normalized = normalizer(back, term=front)
 
-    b_rendered = render(b, highlight=term, front=f, deck=deck)
-
-    if '<' in f or '&nbsp;' in f:
-        # TODO technically this should be a warn_print
-        info_print("Warning: 'Front' field with HTML hinders exact match search.")
+    if '<' in front or '&nbsp;' in front:
+        info_print("'Front' field with HTML hinders exact match search.")
         # Auto-clean it?
         if True:
             # Rendering removes the HTML, for console printing
-            cleaned = render(f).strip()
+            cleaned = normalizer(front).strip()
             card_id = card['cardId']
             update_card(card_id, front=cleaned)
             info_print(f"Updated to:")
             # Get again from Anki to verify updated card
-            return render_card(get_card(card_id))
+            return normalize_card(get_card(card_id))
 
-    return b_rendered
+    return normalized
 
 
 def sync():
@@ -969,6 +974,7 @@ def main(deck):
 
     # The content/definition of the current (locally/remotely) found card
     content = None
+    normalized = None
     menu = ''
 
     # Spell-scheck suggestions returned from the remote fetch/search?
@@ -989,30 +995,39 @@ def main(deck):
         scroll_screen()
 
     while True:
+        updatable = None
+        normalized = ''
+
         if card_ids:
             # Set card_id and content based on card_ids and card_ids_i
             card_id = card_ids[card_ids_i]
             card = get_card(card_id)
-            content = render_card(card)
+            normalized = normalize_card(card)
+            if normalized != card['fields']['Back']['value']:
+                updatable = True
         else:
             card_id = None
+            # Remind the user of any previous context, (eg to allow to Add)
+            if content:
+                normalized = normalizer(content, term=term)
 
-        # Remind the user of any previous context, and then allow to Add
-        content = content or ''
+        # Save the content, before further display-only modifications
+        content = normalized
+        if normalized:
+            front = card['fields']['Front']['value'] if card_ids else ''
+            normalized = renderer(normalized, term, term=front, deck=deck)
 
         # Clear the top of the screen
         # But ensure that it lines up, so that PgUp and PgDown on the terminal work one-def-at-a-time
         # TODO refactor this into scroll_screen
-        rendered = render(content, highlight=term, deck=deck)
-        rendered = wrapper(rendered)
         if not options.debug:
-            lines_n = os.get_terminal_size().lines - len(re.findall("\n", rendered))
+            lines_n = os.get_terminal_size().lines - len(re.findall("\n", normalized))
             # TODO refactor this out into a scroll() def and call it also after changing deck
             # With default being os.get_terminal_size().lines - 4 (or whatever lines up)
             # And make the 4 a constant BORDERS_HEIGHT
             info_print()
             print("\n" * lines_n)
-        print('\n' + rendered + '\n')
+        print('\n' + normalized)
 
         if term and not content:
             info_print("No results: " + term)
@@ -1021,9 +1036,7 @@ def main(deck):
 
         if suggestions:
             info_print("Did you mean: (press TAB for autocomplete)")
-            print("\n".join(suggestions))
-
-        print(menu + '\r', end='', flush=True)
+            print("\n".join(suggestions) + "\n")
 
         # spell-checker:disable
         menu = [ '' ]
@@ -1032,12 +1045,16 @@ def main(deck):
             menu += [ "        " ]
         else:
             if not card_id:
-                menu += [ COLOR_WARN + "?" + RESET ]
+                menu += [ COLOR_WARN + "+" + RESET ]
                 menu += [ "(A)dd    " ]
                 menu += [ "(F)etch  " ]
             else:
-                menu += [ COLOR_OK + "✓" + RESET]
-                menu += [ "Dele(t)e " ]
+                if updatable:
+                    menu += [ COLOR_WARN + "⬆" + RESET]
+                    menu += [ "(U)pdate " ]
+                else:
+                    menu += [ COLOR_OK + "✓" + RESET]
+                    menu += [ "Dele(t)e " ]
                 menu += [ "(R)eplace" ]
                 if len(card_ids) > 1:
                     # Display in 1-based counting
@@ -1061,8 +1078,6 @@ def main(deck):
         # if n_new := get_new(deck) :
         #     menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
 
-        # TODO send each popped result through $PAGER .
-        # Rather, since it's just a Fetch, do the $PAGER for any Fetch
         if empty_ids := get_empties(deck):
             menu += [ "(E)mpties:" + COLOR_WARN + str(len(empty_ids)) + RESET ]
 
@@ -1102,6 +1117,7 @@ def main(deck):
             # r Replace
             # s Search, or '/' key
             # t Delete
+            # u Update
             # w Wildcard matches (in front or back fields)
             # y Sync
             # * Sync
@@ -1215,17 +1231,25 @@ def main(deck):
                 suggestions = obj and obj.get('suggestions') or []
 
                 if card_id and content:
-                    rendered = render(content, highlight=front, deck=deck)
-                    rendered = wrapper(rendered)
+                    normalized = normalizer(content, term=front)
+
+                    # TODO idempotent?
+                    normalized2 = normalizer(normalized, term=front)
+                    if normalized != normalized2:
+                        info_print("Normalizer not idempotent")
+
                     info_print()
-                    print(rendered, "\n")
+                    print(renderer(normalized, front, term=front, deck=deck))
                     try:
                         prompt = "Replace " + COLOR_COMMAND + front + RESET + " with this definition? N/y: "
                         reply = input(prompt)
                     except:
                         reply = None
                     if reply and reply.casefold() == 'y':
-                        update_card(card_id, back=content)
+                        # TODO save the normalized version
+                        # update_card(card_id, back=content)
+                        update_card(card_id, back=normalized)
+                        edits_n += 1
 
             elif key == 'g' and term:
                 search_google(term)
@@ -1310,6 +1334,10 @@ def main(deck):
                     suggestions = obj and obj.get('suggestions') or []
                     # If any, suggestions/content printed on next iteration.
 
+            elif key == 'u' and updatable:
+                update_card(card_id, back=content)
+                edits_n += 1
+
             else:
                 # Unrecognized command.
                 print("\a", end='', flush=True)
@@ -1370,6 +1398,9 @@ if __name__ == "__main__":
     readline.parse_and_bind("tab: complete")
 
     # Set terminal title, to be able to search through windows
-    sys.stdout.write('\x1b]2;' + "Anki CLI card mgr" + '\x07')
+    title = "Anki CLI card mgr"
+    if options.debug:
+        title = "debug: " + title
+    sys.stdout.write('\x1b]2;' + title + '\x07')
 
     main(options.deck)

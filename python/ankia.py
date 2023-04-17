@@ -342,6 +342,11 @@ def normalizer(string, *, term=None):
     # Specific to: PONS Großwörterbuch Deutsch als Fremdsprache
     string = re.sub('<span class="illustration">', '\n', string)
 
+    # FreeDictionary EN (American Heritage® Dictionary of the English Language)
+    string = re.sub(r'<span class="pron".*?</span>', '', string)
+    # Replace headings that just break up the word into syl·la·bles, since we get that from IPA already
+    string = re.sub(r'<h2>.*?·.*?</h2>', '', string)
+
     # HTML-specific:
     # Remove span/font tags, so that the text can stay on one line
     string = re.sub(r'<span\s+.*?>', '', string)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Anki add - fetch online definitions and add new cards to Anki vocabulary decks
+"""Anki add - fetch online definitions and add cards to Anki vocabulary decks
 
 Based on this API:
 https://github.com/FooSoft/anki-connect/
@@ -15,10 +15,25 @@ re-search for the canonical form, and then add that term instead. (This should
 be clearly visible if this has happened, because the search term, if present,
 will be highlighted in the displayed text.)
 
-For example, in Dutch, searching for 'geoormerkt' (a past participle) will return
-the definition for 'oormerken' (the infinitive). In that case, you'd rather not
-add that card, but rather re-search for 'oormerken', now that you know what the
-base form is, and add the latter as a new card instead.
+For example, in Dutch, searching for 'geoormerkt' (a past participle) will
+return the definition for 'oormerken' (the infinitive). In that case, you'd
+rather not add that card, but rather re-search for 'oormerken', now that you
+know what the base form is, and add the latter as a new card instead.
+
+A note regarding text-only (non-HTML) cards:
+
+Using text-only cards (non-HTML) implies that when you want to use the Anki GUI
+to edit a card, then you should be using the source editor (Ctrl-Shift-X),
+rather than the WYSIWYG/rich-text editor.
+
+Even with the source editor, if you ever edit a card in the Anki GUI and it
+contains an ampersand `&`, eg `R&D` , in the front or back fields, then it'll be
+automatically HTML-encoded anew as `R&amp;D` in the source. That means your text
+searches for 'R&D' won't find that match. If you re-view that card from this
+CLI, the source text can be fixed/updated anew.
+
+Cards should to use the CSS style: `white-space: pre-wrap;` to enable wrapping
+of raw text.
 
 """
 
@@ -39,6 +54,7 @@ import urllib.parse
 import urllib.request
 from optparse import OptionParser
 
+import autopage
 import readchar
 import unidecode
 from bs4 import BeautifulSoup
@@ -58,30 +74,29 @@ def backlog():
 
 # Backlog/TODO
 
-# Doc: in Anki, my text-only changes imply using the raw source editor, to edit the raw text of a card: Ctrl-Shift-x
-# And cards need to use the CSS style: "white-space: pre-wrap;"
-
-# DOC: If you ever edit a card in the GUI and it contains a raw ampersand "&" , in
-# the front or back fields, then it'll be automatically HTML encoded anew as &amp;
-# That means your searches for eg R&D won't match correctly.
-# If you re-view the card from the CLI, it can be fixed/updated.
-
 # Bulk replace all cards (which langs?) with the version from normalizer() ie HTML=>text
+# Make a new options.autoupdate (and stop using options.debug for that)
 
 # Bug in FR: note markup for antonyms - or check API -
 # else replace <span class="Ant"> with something else (e.g. franc != menteur)
 
 # Make the 'o' command open whatever the source page was (not just woorden.org)
 
-# bug with NL results from FD (for when Woorden isn't working).
+# TODO Address Pylance issues
+
+# BUG no NL results from FD (from FreeDictionary)
 # Why does EN work when NL doesn't?
 # If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
 
-# Terminal display - pager
-# Pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
-# eg: subprocess.run(['less', '--quit-if-one-screen'], input=some_str)
-# https://stackoverflow.com/a/39587824/256856
-# https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
+# Make constants for the keycodes, eg CTRL_C = '\x03'
+
+# Logging:
+# look for log4j style debug mode console logging/printing (with colors)
+
+# Anki: unify note types (inheritance), not for this code, but in the app.
+# Learn what the purpose of different notes types is, and then make them all use
+# the same, or make them inherit from each other, so that I don't have to
+# configure/style a separate note type for each language.
 
 # Since I'd also like to try to make formatted text versions for other
 # languages, maybe regex-based rendering isn't the most sustainable approach.
@@ -97,14 +112,11 @@ def backlog():
 # https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
 # And use CSS selectors to extract content more robustly
 
-# Make constants for the keycodes, eg CTRL_C = '\x03'
-
 # Consider alternative addons for Anki (for creating new cards using online dicts)
 # https://ankiweb.net/shared/info/1807206748
 # https://github.com/finalion/WordQuery
 # All addons:
 # https://ankiweb.net/shared/addons/
-
 
 # Use freeDictionary API, so as to need less regex parsing
 # https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
@@ -143,16 +155,6 @@ def backlog():
 # { lang: en, dict: dictionary.com, syn/thes: somesynservice.com, ipa: some ipa service, etym: etymonline.com, ...}
 # Get IPA from Wiktionary (rather than FreeDictionary)?
 # And maybe later think about how to combine/concat these also to the same anki card ...
-
-# TODO Address Pylance issues
-
-# Logging:
-# look for log4j style debug mode console logging/printing (with colors)
-
-# Anki: unify note types (inheritance), not for this code, but in the app.
-# Learn what the purpose of different notes types is, and then make them all use
-# the same, or make them inherit from each other, so that I don't have to
-# configure/style a separate note type for each language.
 
 
 ################################################################################
@@ -934,13 +936,13 @@ def normalize_card(card):
     # TODO make a class for a Card ?
     front = card['fields']['Front']['value']
     back = card['fields']['Back']['value']
-    deck = card['deckName']
     normalized = normalizer(back, term=front)
 
     if re.findall(r'<|&[A-Za-z]+;', front) :
         info_print("'Front' field with HTML hinders exact match search.")
+
         # Auto-clean it?
-        if True:
+        if options.debug :
             # Rendering removes the HTML, for console printing
             cleaned = normalizer(front).strip()
             info_print(f'cleaning:{cleaned}:')
@@ -1049,7 +1051,9 @@ def main(deck):
             # And make the 4 a constant BORDERS_HEIGHT
             info_print()
             print("\n" * lines_n)
-        print('\n' + normalized)
+
+        with autopage.AutoPager() as out:
+            print('\n' + normalized, file=out)
 
         if term and not content:
             info_print("No results: " + term)

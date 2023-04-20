@@ -61,7 +61,27 @@ def backlog():
 # Doc: in Anki, my text-only changes imply using the raw source editor, to edit the raw text of a card: Ctrl-Shift-x
 # And cards need to use the CSS style: "white-space: pre-wrap;"
 
+# DOC: If you ever edit a card in the GUI and it contains a raw ampersand "&" , in
+# the front or back fields, then it'll be automatically HTML encoded anew as &amp;
+# That means your searches for eg R&D won't match correctly.
+# If you re-view the card from the CLI, it can be fixed/updated.
+
 # Bulk replace all cards (which langs?) with the version from normalizer() ie HTML=>text
+
+# Bug in FR: note markup for antonyms - or check API -
+# else replace <span class="Ant"> with something else (e.g. franc != menteur)
+
+# Make the 'o' command open whatever the source page was (not just woorden.org)
+
+# bug with NL results from FD (for when Woorden isn't working).
+# Why does EN work when NL doesn't?
+# If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
+
+# Terminal display - pager
+# Pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
+# eg: subprocess.run(['less', '--quit-if-one-screen'], input=some_str)
+# https://stackoverflow.com/a/39587824/256856
+# https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
 
 # Since I'd also like to try to make formatted text versions for other
 # languages, maybe regex-based rendering isn't the most sustainable approach.
@@ -79,25 +99,12 @@ def backlog():
 
 # Make constants for the keycodes, eg CTRL_C = '\x03'
 
-# Enable searching for eg O&O (in the card encoded as O&amp;O )
-# Consider alternative addons for Anki:
+# Consider alternative addons for Anki (for creating new cards using online dicts)
 # https://ankiweb.net/shared/info/1807206748
 # https://github.com/finalion/WordQuery
 # All addons:
 # https://ankiweb.net/shared/addons/
 
-# Bug in FR: note markup for antonyms - or check API -
-# else replace <span class="Ant"> with something else (e.g. franc != menteur)
-
-# bug with NL results from FD (for when Woorden isn't working).
-# Why does EN work when NL doesn't?
-# If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
-
-# Terminal display - pager
-# Pipe each bit of `content` or popped card_ids through less/PAGER --quit-if-one-screen
-# eg: subprocess.run(['less', '--quit-if-one-screen'], input=some_str)
-# https://stackoverflow.com/a/39587824/256856
-# https://stackoverflow.com/questions/6728661/paging-output-from-python/18234081
 
 # Use freeDictionary API, so as to need less regex parsing
 # https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
@@ -483,15 +490,20 @@ def highlighter(string, query, *, term=None, deck=None):
         # eg ski-ën, hersen-en
         highlights.add( re.sub(r'en$', r'\\S*', term_or_query) )
 
+        # And adjectives/nouns like vicieus/vicieuze or reus/reuze or keus/keuze
+        if term_or_query.endswith('eus') :
+            highlights.add( re.sub(r'eus$', r'euz\\S*', term_or_query) )
+
         # Find given inflections
 
         matches = []
         # Theoretically, we could not have a double loop here, but this makes it easier to read.
         # There can be multiple inflections in one line (eg prijzen), so it's easier to have two loops.
-        for inflection in re.findall(r'(?ms)^(?:Vervoegingen|Verbuigingen):\s*(.*?)\s*\n{1,2}', string):
+        for inflection in re.findall(r'(?m)^\s*(?:Vervoegingen|Verbuigingen):\s*(.*?)\s*$', string):
             # There is not always a parenthetical part-of-speech after the inflection of plurals.
             # Sometimes it's just eol (eg "nederlaag") . So, it ends either with eol $ or open paren (
-            matches += re.findall(r'(?s)(?:\)|^)\s*(.+?)\s*(?:\(|$)', inflection)
+            match = re.findall(r'(?s)(?:\)|^)\s*(.+?)\s*(?:\(|$)', inflection)
+            matches += match
 
         for match in matches:
 
@@ -669,6 +681,10 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
         # if field == 'front' and deck == 'nl':
         #     # Note, Anki needs the term in the query that uses "re:" to be wrapped in double quotes (also in the GUI)
         #     terms = [*terms, f'"back:re:(?s)(Verbuiging|Vervoeging)(en)?:(&nbsp;|\s|<.*?>|heeft|is)*{term}\\b"' ]
+
+        # TODO since we parse these out from the highlighter() (if it's
+        # reliable), we could (auto?) add these as tags to the cards, and then
+        # also search the tags (?)
 
     query = f'deck:{deck} (' + ' OR '.join([*terms]) + ')'
     # info_print(f'query:{query}')
@@ -921,12 +937,13 @@ def normalize_card(card):
     deck = card['deckName']
     normalized = normalizer(back, term=front)
 
-    if '<' in front or '&nbsp;' in front:
+    if re.findall(r'<|&[A-Za-z]+;', front) :
         info_print("'Front' field with HTML hinders exact match search.")
         # Auto-clean it?
         if True:
             # Rendering removes the HTML, for console printing
             cleaned = normalizer(front).strip()
+            info_print(f'cleaning:{cleaned}:')
             card_id = card['cardId']
             update_card(card_id, front=cleaned)
             info_print(f"Updated to:")
@@ -1019,7 +1036,7 @@ def main(deck):
         # Save the content, before further display-only modifications
         content = normalized
         if normalized:
-            front = card['fields']['Front']['value'] if card_ids else ''
+            front = (card_ids and card['fields']['Front']['value']) or term or ''
             normalized = renderer(normalized, term, term=front, deck=deck)
 
         # Clear the top of the screen
@@ -1271,6 +1288,7 @@ def main(deck):
                 card_ids = search_anki(term, deck=deck)
                 card_ids_i = 0
             elif key == 'e' and empty_ids:
+                # TODO implement a Card object to use here
                 card_id = empty_ids[0]
                 term = get_card(card_id)['fields']['Front']['value']
                 delete_card(card_id)
@@ -1394,6 +1412,9 @@ if __name__ == "__main__":
         help="Name of Anki deck to use (must be a 2-letter language code, e.g. 'en')"
         )
     (options, args) = parser.parse_args()
+
+    options.debug =  not not sys.gettrace()
+
     if not options.deck:
         # Take the first deck by default; fail if there are none
         options.deck = decks[0]

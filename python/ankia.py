@@ -1,8 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env pypy3
 """Anki add - fetch online definitions and add cards to Anki vocabulary decks
 
-Based on this API:
-https://github.com/FooSoft/anki-connect/
+Based on this API: https://github.com/FooSoft/anki-connect/
 
 A note on searching for declined / conjugated forms of words:
 
@@ -29,8 +28,10 @@ rather than the WYSIWYG/rich-text editor.
 Even with the source editor, if you ever edit a card in the Anki GUI and it
 contains an ampersand `&`, eg `R&D` , in the front or back fields, then it'll be
 automatically HTML-encoded anew as `R&amp;D` in the source. That means your text
-searches for 'R&D' won't find that match. If you re-view that card from this
-CLI, the source text can be fixed/updated anew.
+searches for 'R&D' won't find that match.
+
+If you re-view that card from this CLI, the source text can be fixed/updated
+anew.
 
 Cards should to use the CSS style: `white-space: pre-wrap;` to enable wrapping
 of raw text.
@@ -53,6 +54,7 @@ import time
 import urllib.parse
 import urllib.request
 from optparse import OptionParser
+from difflib import Differ
 
 import autopage
 import readchar
@@ -74,11 +76,19 @@ def backlog():
 
 # Backlog/TODO
 
-# Bulk replace all cards (which langs?) with the version from normalizer() ie HTML=>text
-# Make a new options.autoupdate (and stop using options.debug for that)
+# Is there an API for FD? Doesn't seem like it.
 
-# Bug in FR: note markup for antonyms - or check API -
-# else replace <span class="Ant"> with something else (e.g. franc != menteur)
+# Use freeDictionary API, so as to need less regex parsing
+# https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
+
+# Add support for wiktionary? (IPA?) ?
+# eg via ? https://github.com/Suyash458/WiktionaryParser
+
+# Add nl-specific etymology?
+# https://etymologiebank.nl/
+
+# FR: Or use a diff source, eg TV5
+# https://langue-francaise.tv5monde.com/decouvrir/dictionnaire/f/franc
 
 # Make the 'o' command open whatever the source page was (not just woorden.org)
 
@@ -89,6 +99,9 @@ def backlog():
 # If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
 
 # Make constants for the keycodes, eg CTRL_C = '\x03'
+
+# Replace colors with `termcolor` lib?
+# TODO consider colorama here?
 
 # Logging:
 # look for log4j style debug mode console logging/printing (with colors)
@@ -117,15 +130,6 @@ def backlog():
 # https://github.com/finalion/WordQuery
 # All addons:
 # https://ankiweb.net/shared/addons/
-
-# Use freeDictionary API, so as to need less regex parsing
-# https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
-
-# Add support for wiktionary? (IPA?) ?
-# eg via ? https://github.com/Suyash458/WiktionaryParser
-
-# Add nl-specific etymology?
-# https://etymologiebank.nl/
 
 # Repo/Packaging:
 # figure out how to package deps (eg readchar) and test it again after removing local install of readchar
@@ -159,7 +163,6 @@ def backlog():
 
 ################################################################################
 
-# TODO consider colorama here?
 
 # Color codes:
 # The '1;' makes a foreground color bold/bright as well.
@@ -271,8 +274,8 @@ def normalizer(string, *, term=None):
 
     # Specific to woorden.org
     # Before unescaping HTML entities: Replace (&lt; and &gt;) with ( and )
-    string = re.sub(r'&lt;', '(', string)
-    string = re.sub(r'&gt;', ')', string)
+    string = re.sub(r'&lt;|《', '(', string)
+    string = re.sub(r'&gt;|》', ')', string)
     string = re.sub(r'&nbsp;', ' ', string)
     # Other superfluous chars:
     string = re.sub(r'《/?em》', '', string)
@@ -282,6 +285,9 @@ def normalizer(string, *, term=None):
 
     # Remove tags that are usually in the phonetic markup
     string = re.sub(r'</?a\s+.*?>', '', string)
+
+    # Remove references like [3], since we probably don't have the footnotes too
+    string = re.sub(r'\[\d+\]', '', string)
 
     # NL-specific (or specific to woorden.org)
     # Segregate topical category names e.g. 'informeel'
@@ -301,8 +307,9 @@ def normalizer(string, *, term=None):
         ,'ambacht'
         ,'anatomie'
         ,'architectuur'
+        ,'cinema'
         ,'commercie'
-        ,'computers'
+        ,'computers?'
         ,'constructie'
         ,'culinair'
         ,'defensie'
@@ -312,21 +319,29 @@ def normalizer(string, *, term=None):
         ,'financieel'
         ,'formeel'
         ,'geschiedenis'
+        ,'handel'
         ,'informatica'
         ,'informeel'
+        ,'internet'
         ,'juridisch'
         ,'kunst'
         ,'landbouw'
         ,'medisch'
+        ,'metselen'
         ,'muziek'
         ,'ouderwets'
         ,'politiek'
         ,'religie'
+        ,'slang'
         ,'speelgoed'
         ,'sport'
         ,'spreektaal'
+        ,'taal'
         ,'technisch'
+        ,'theater'
         ,'transport'
+        ,'verouderd'
+        ,'visserij'
         ,'vulgair'
     ]
     # spell-checker:enable
@@ -334,36 +349,49 @@ def normalizer(string, *, term=None):
     # If we still have the HTML tags, then we can see if this topic category is new to us.
     # Optionally, it can then be manually added to the list above.
     # Otherwise, they wouldn't be detected in old cards, if it's not already in [brackets]
-    match = re.search(r'<sup>(.*?)</sup>', string)
-    category = None
-    if match:
-        category = match.group(1)
+    for match in re.findall(r'<sup>([a-z]+?)</sup>', string) :
+        category = match
+        # debug_print(f'{category=}')
         # If this is a known category, just format it as such.
         # (We're doing a regex match here, since a category name might be a regex.)
-        if any([ re.search(c, category) for c in categories ]):
-            string = re.sub(r'<sup>(.*?)</sup>', r'[\1]', string)
+        string = re.sub(r'<sup>(\w+)</sup>', r'[\1]', string)
+        if any([ re.search(c, category, re.IGNORECASE) for c in categories ]):
+            ...
         else:
             # Notify, so you can (manually) add this one to the 'categories' list above.
-            print(f'\nNew category [{YELLOW_LT}{category}{RESET}]\n')
+            print(f'\nNew category [{YELLOW_LT}{category}{RESET}]\n',)
             beep()
-            time.sleep(1)
+            time.sleep(5)
+
+    # Replace remaining <sup> tags
+    string = re.sub(r'<sup>', r'^', string)
 
     # Specific to: PONS Großwörterbuch Deutsch als Fremdsprache
     string = re.sub('<span class="illustration">', '\n', string)
 
-    # FreeDictionary EN (American Heritage® Dictionary of the English Language)
+    # Specific to fr.thefreedictionary.com (Maxipoche 2014 © Larousse 2013)
+    string = re.sub('<span class="Ant">', '\nantonyme: ', string)
+    string = re.sub('<span class="Syn">', '\nsynonyme: ', string)
+
+    # Specific to en.thefreedictionary.com (American Heritage® Dictionary of the English Language)
     string = re.sub(r'<span class="pron".*?</span>', '', string)
     # Replace headings that just break up the word into syl·la·bles, since we get that from IPA already
     string = re.sub(r'<h2>.*?·.*?</h2>', '', string)
+    # For each new part-of-speech block
+    string = re.sub(r'<div class="pseg">', '\n\n', string)
+
+    # Add spaces around em dash — for readability
+    string = re.sub(r'(\S)—(\S)', r'\1 — \2', string)
 
     # HTML-specific:
     # Remove span/font tags, so that the text can stay on one line
     string = re.sub(r'<span\s+.*?>', '', string)
     string = re.sub(r'<font\s+.*?>', '', string)
-    # These HTML tags <i> <b> <u> are usually used inline and should not have a line break
-    string = re.sub(r'<[ibu]/?>', '', string)
+    # These HTML tags <i> <b> <u> <em> are usually used inline and should not have a line break
+    string = re.sub(r'<(i|b|u|em)>', '', string)
 
     string = re.sub(r'<br\s*/?>', '\n\n', string)
+    string = re.sub(r'<hr.*?>', '\n\n___\n\n', string)
 
     # Headings on their own line, by replacing the closing tag with \n
     string = re.sub(r'</h\d>\s*', '\n', string)
@@ -420,9 +448,9 @@ def normalizer(string, *, term=None):
     # Ensure new sections start a new paragraph, eg I. II. III. IV.
     string = re.sub(r'\s+(I{1,3}V?\.)', r'\n\n\1', string)
     # New paragraph for each definition on the card, marked by eg: 1. or 2.
-    string = re.sub(r';?\s*(\d+\.)', r'\n\n\1', string)
+    string = re.sub(r';?\s*(\d+\. +)', r'\n\n\1', string)
     # And sub-definitions, also indented, marked by eg: a) or b)
-    string = re.sub(r';?\s+([a-z]\)\s+)', r'\n  \1', string)
+    string = re.sub(r';?\s+([a-z]\) +)', r'\n  \1', string)
 
     # Max 2x newlines in a row
     string = re.sub(r'(\s*\n\s*){3,}', '\n\n', string)
@@ -487,10 +515,10 @@ def highlighter(string, query, *, term=None, deck=None):
 
     # Language/source-specific extraction of inflected forms
     if deck == 'nl':
-        # Hack stemming, assuming -en suffix
+        # Hack stemming, assuming -en suffix, but not for short words like 'een'
         # For cases: verb infinitives, or plural nouns without singular
         # eg ski-ën, hersen-en
-        highlights.add( re.sub(r'en$', r'\\S*', term_or_query) )
+        highlights.add( re.sub(r'(..)en$', r'\1\\S*', term_or_query) )
 
         # And adjectives/nouns like vicieus/vicieuze or reus/reuze or keus/keuze
         if term_or_query.endswith('eus') :
@@ -668,7 +696,6 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
             search_term = next_term
 
     if field:
-        # info_print(f'field:{field}')
         if wild:
             # Wrap *stars* around (each) term.
             # Note, only necessary if using 'field', since it's default otherwise
@@ -689,7 +716,7 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
         # also search the tags (?)
 
     query = f'deck:{deck} (' + ' OR '.join([*terms]) + ')'
-    # info_print(f'query:{query}')
+    # debug_print(f'{query=}')
 
     if browse:
         card_ids = invoke('guiBrowse', query=query)
@@ -800,10 +827,10 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
 
     # TODO extract smarter. Check DOM parsing libs / XPATH selection / CSS selectors
 
-    # BUG parsing broken for 'stokken'
-    # BUG parsing broken for http://www.woorden.org/woord/tussenin
+    # BUG parsing broken for words that aren't in Woorden, but extracted from 3rd parties, eg encyclo.nl
+    #  'stokken', 'tussenin', 'hangertje'
 
-    match = re.search(f"(?s)(\<h2.*?{term}.*?)(?=&copy|Bron:|\<div|\<\/div)", content)
+    match = re.search(f"(?s)(<h2.*?{term}.*?)(?=&copy|Bron:|<div|</div)", content)
     if not match:
         debug_print("No match in HTML document")
         return
@@ -837,7 +864,7 @@ def search_thefreedictionary(term, *, lang):
 
     clear_line()
     # TODO extract smarter. Check DOM parsing libs / XPATH / CSS selector
-    match = re.search('<div id="Definition"><section .*?>.*?<\/section>', content)
+    match = re.search('<div id="Definition"><section .*?>.*?</section>', content)
     if not match:
         return return_obj
 
@@ -925,7 +952,7 @@ def wrapper(string):
 
     lines_wrapped = []
     for line in string.splitlines():
-        line_wrap = textwrap.wrap(line, WRAP_WIDTH, replace_whitespace=False, drop_whitespace=False)
+        line_wrap = textwrap.wrap(line, WRAP_WIDTH, replace_whitespace=False, drop_whitespace=True)
         line_wrap = line_wrap or ['']
         lines_wrapped += line_wrap
     string = "\n ".join(lines_wrapped)
@@ -945,7 +972,7 @@ def normalize_card(card):
         if options.debug :
             # Rendering removes the HTML, for console printing
             cleaned = normalizer(front).strip()
-            info_print(f'cleaning:{cleaned}:')
+            info_print(f'{cleaned=}')
             card_id = card['cardId']
             update_card(card_id, front=cleaned)
             info_print(f"Updated to:")
@@ -992,6 +1019,7 @@ def main(deck):
     card_ids = []
     card_ids_i = 0
     card_id = None
+    card = None
 
     # Across the deck, the number(s) of wildcard matches on the front/back of other cards
     wild_n = None
@@ -1019,7 +1047,7 @@ def main(deck):
         scroll_screen()
 
     while True:
-        updatable = None
+        updatable = False
         normalized = ''
 
         if card_ids:
@@ -1052,8 +1080,10 @@ def main(deck):
             info_print()
             print("\n" * lines_n)
 
-        with autopage.AutoPager() as out:
-            print('\n' + normalized, file=out)
+        # If --auto-scroll (for --auto-update), not need to print every definition along the way
+        if not options.scroll :
+            with autopage.AutoPager() as out:
+                print('\n' + normalized, file=out)
 
         if term and not content:
             info_print("No results: " + term)
@@ -1067,6 +1097,8 @@ def main(deck):
         # spell-checker:disable
         menu = [ '' ]
 
+        if options.debug:
+            menu += [ COLOR_WARN + "D" + RESET]
         if not term:
             menu += [ "        " ]
         else:
@@ -1124,250 +1156,280 @@ def main(deck):
         menu = re.sub(r'\)', RESET, menu)
 
         key = None
+        if options.update and updatable and content:
+            # Auto-update this card
+            key = 'u'
+        elif options.scroll and card_ids and card_ids_i < len(card_ids) - 1 :
+            # Auto-scroll through the resultset to the next card. Since the
+            # 'update' is checked first, the current card will be updated, if
+            # possible, before proceeding to the next card.
+            key = 'n'
         while not key:
             clear_line()
             print(menu + '\r', end='', flush=True)
             key = readchar.readkey()
 
-            # TODO smarter way to clear relevant state vars ?
-            # What's the state machine/diagram behind all these?
+        # TODO smarter way to clear relevant state vars ?
+        # What's the state machine/diagram behind all these?
 
-            # / ↑ Search
-            # a Add
-            # b Browse/list matching cards in Anki GUI
-            # d Deck
-            # f Fetch / lookup / Definition / Query
-            # g Google
-            # n Next
-            # p Prev / Shift-n, or up key ↑
-            # r Replace
-            # s Search, or '/' key
-            # t Delete
-            # u Update
-            # w Wildcard matches (in front or back fields)
-            # y Sync
-            # * Sync
+        # / ↑ Search
+        # a Add
+        # b Browse/list matching cards in Anki GUI
+        # d Deck
+        # f Fetch / lookup / Definition / Query
+        # g Google
+        # n Next
+        # p Prev / Shift-n, or up key ↑
+        # r Replace
+        # s Search, or '/' key
+        # t Delete
+        # u Update
+        # w Wildcard matches (in front or back fields)
+        # y Sync
+        # * Sync
 
-            if key in KEYS_CLOSE:
-                clear_line()
-                exit()
-            elif key == '.':
-                # Reload (for 'live' editing / debugging)
-                tl = time.localtime(os.path.getmtime(sys.argv[0]))[0:6]
-                ts = "%04d-%02d-%02d %02d:%02d:%02d" % tl
-                info_print(f"pid: {os.getpid()} mtime: {ts} execv: {sys.argv[0]}")
-                os.execv(sys.argv[0], sys.argv)
-            elif key in ('\x0c', '\x03'):
-                # Ctrl-L or Ctrl-C clear screen
-                clear_screen()
-            elif key == 'd':
-                # Switch deck
-                # TODO refactor this out. Or use a curses lib.
-                decks = get_deck_names()
-                scroll_screen()
-                print(COLOR_COMMAND)
-                print("\n * ".join(['', *decks]))
-                print(RESET)
+        if key in KEYS_CLOSE:
+            clear_line()
+            exit()
+        elif key == '.':
+            # Reload (for 'live' editing / debugging)
+            tl = time.localtime(os.path.getmtime(sys.argv[0]))[0:6]
+            ts = "%04d-%02d-%02d %02d:%02d:%02d" % tl
+            info_print(f"{os.getpid()=} mtime={ts} {sys.argv[0]=}")
+            os.execv(sys.argv[0], sys.argv)
+        elif key in ('\x0c', '\x03'):
+            # Ctrl-L or Ctrl-C clear screen
+            clear_screen()
+        elif key == 'd':
+            # Switch deck
+            # TODO refactor this out. Or use a curses lib.
+            decks = get_deck_names()
+            scroll_screen()
+            print(COLOR_COMMAND)
+            print("\n * ".join(['', *decks]))
+            print(RESET)
 
-                deck_prev = options.deck
-                # Block autocomplete of dictionary entries
-                options.deck = None
-                # Push deck names onto readline history stack, for ability to autocomplete
-                hist_len_pre = readline.get_current_history_length()
-                for d in decks:
-                    readline.add_history(d)
+            deck_prev = options.deck
+            # Block autocomplete of dictionary entries
+            options.deck = None
+            # Push deck names onto readline history stack, for ability to autocomplete
+            hist_len_pre = readline.get_current_history_length()
+            for d in decks:
+                readline.add_history(d)
 
-                try:
-                    selected = input("Switch to deck: ")
-                except:
-                    options.deck = deck_prev
-                    continue
-                finally:
-                    # Remove the deck names, as no longer needed in (word) history.
-                    # This isn't just (hist_len_post - hist_len_pre) , because it
-                    # depends on how many times the user completed.
-                    hist_len_post = readline.get_current_history_length()
-                    for i in range(hist_len_post, hist_len_pre, -1):
-                        readline.remove_history_item(i-1) # zero-based indexes
+            try:
+                selected = input("Switch to deck: ")
+            except:
+                options.deck = deck_prev
+                continue
+            finally:
+                # Remove the deck names, as no longer needed in (word) history.
+                # This isn't just (hist_len_post - hist_len_pre) , because it
+                # depends on how many times the user completed.
+                hist_len_post = readline.get_current_history_length()
+                for i in range(hist_len_post, hist_len_pre, -1):
+                    readline.remove_history_item(i-1) # zero-based indexes
 
-                if not selected in decks:
-                    beep()
-                    continue
-                deck = selected
-                # This is so that `completer()` can know what lang/deck we're using
-                options.deck = deck
+            if not selected in decks:
+                beep()
+                continue
+            deck = selected
+            # This is so that `completer()` can know what lang/deck we're using
+            options.deck = deck
 
-                term = None
-                card_id = None
-                card_ids = []
-                card_ids_i = 0
-                wild_n = None
-                suggestions = []
+            term = None
+            card_id = None
+            card_ids = []
+            card_ids_i = 0
+            wild_n = None
+            suggestions = []
+            content = None
+            scroll_screen()
+        elif key in ['y', '*']:
+            sync()
+            edits_n = 0
+        elif key == 't' and card_id:
+            if delete_card(card_id):
+                edits_n += 1
+                del card_ids[card_ids_i]
+                card_ids_i = max(0, card_ids_i - 1)
                 content = None
                 scroll_screen()
-            elif key in ['y', '*']:
-                sync()
-                edits_n = 0
-            elif key == 't' and card_id:
-                if delete_card(card_id):
-                    edits_n += 1
-                    del card_ids[card_ids_i]
-                    card_ids_i = max(0, card_ids_i - 1)
-                    content = None
-                    scroll_screen()
-                else:
-                    beep()
-            elif key == 'b' and term:
-                # Open Anki GUI Card browser/list,
-                # for the sake of editing/custom searches
-                if len(card_ids) > 1:
-                    # Wildcard search fronts and backs
-                    search_anki(term, deck=deck, field=None, browse=True)
-                else:
-                    # Search 'front' for this one card
-                    search_anki(term, deck=deck, field='front', browse=True)
-            elif key == 'w' and wild_n:
-                # wildcard search all fields (front, back, etc)
-                card_ids = search_anki(term, deck=deck, field=None)
-                card_ids_i = 0
-                wild_n = None
-                suggestions = []
-            elif key in ('n') and card_ids_i < len(card_ids) - 1:
-                card_ids_i += 1
-            elif key in ('p', 'N') and card_ids_i > 0:
-                card_ids_i -= 1
-
-            elif key == 'f' and term:
-                # Fetch (remote dictionary service)
-                obj = search(term, lang=deck)
-                content = obj and obj.get('definition')
-                suggestions = obj and obj.get('suggestions') or []
-                if content:
-                    card_id = None
-                    card_ids = []
-                # If any, suggestions/content printed on next iteration.
-
-            elif key == 'r' and term:
-                # Replace old content (check remote dictionary service first).
-                # Get the 'front' value of the last displayed card,
-                # since this might be a multi-resultset
-                front = card['fields']['Front']['value']
-                obj = search(front, lang=deck)
-                content = obj and obj.get('definition')
-                suggestions = obj and obj.get('suggestions') or []
-
-                if card_id and content:
-                    normalized = normalizer(content, term=front)
-
-                    # TODO idempotent?
-                    normalized2 = normalizer(normalized, term=front)
-                    if normalized != normalized2:
-                        info_print("Normalizer not idempotent")
-
-                    info_print()
-                    print(renderer(normalized, front, term=front, deck=deck))
-                    try:
-                        prompt = "Replace " + COLOR_COMMAND + front + RESET + " with this definition? N/y: "
-                        reply = input(prompt)
-                    except:
-                        reply = None
-                    if reply and reply.casefold() == 'y':
-                        # TODO save the normalized version
-                        # update_card(card_id, back=content)
-                        update_card(card_id, back=normalized)
-                        edits_n += 1
-
-            elif key == 'g' and term:
-                search_google(term)
-            elif key == 'o' and term:
-                url_term = urllib.parse.quote(term) # For web searches
-                # TODO this should use whatever the currently active dictionary is
-                url=f'http://www.woorden.org/woord/{url_term}'
-                launch_url(url)
-            elif key == 'a' and not card_id:
-                add_card(term, content, deck=deck)
-                edits_n += 1
-
-                # And search it to verify
-                card_ids = search_anki(term, deck=deck)
-                card_ids_i = 0
-            elif key == 'e' and empty_ids:
-                # TODO implement a Card object to use here
-                card_id = empty_ids[0]
-                term = get_card(card_id)['fields']['Front']['value']
-                delete_card(card_id)
-                empty_ids = get_empties(deck)
-                card_id = None
-                card_ids = []
-                wild_n  = None
-                edits_n += 1
-                # Update readline, as if I had searched for this term
-                readline.add_history(term)
-
-                # auto fetch
-                clear_line()
-                obj = search(term, lang=deck)
-                content = obj and obj.get('definition')
-                suggestions = obj and obj.get('suggestions') or []
-                # If any, suggestions/content printed on next iteration.
-
-            elif key in ('s', '/', '\x10', '\x1b[A'):
-                # Exact match search
-                # The \x10 is Ctrl-P which is readline muscle memory for 'previous' line.
-                # The \x1b[A is the up key ↑ which is readline muscle memory for 'previous' line.
-
-                content = None
-                suggestions = []
-
-                # TODO factor the prompt of 'term' into a function?
-                clear_line()
-                try:
-                    term = input(f"Search: {COLOR_VALUE + deck + RESET}/")
-                except:
-                    continue
-                term = term.strip()
-                if not term:
-                    continue
-
-                # Allow to switch deck and search in one step, via a namespace-like search.
-                # (Assumes that deck names are 2-letter language codes)
-                # e.g. 'nl:zien' would switch deck to 'nl' first, and then search for 'zien'.
-                # Also allow separators [;/:] to obviate pressing Shift
-                decks_re = '|'.join(decks := get_deck_names())
-                if match := re.match('\s*([a-z]{2})\s*[:;/]\s*(.*)', term):
-                    lang, term = match.groups()
-                    if re.match(f'({decks_re})', lang):
-                        deck = lang
-                else:
-                    lang = deck
-
-                card_ids = search_anki(term, deck=deck)
-                card_ids_i = 0
-                # Check other possible query types:
-                # TODO do all the searches (by try to minimise exact and wildcard into one request)
-                # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
-
-                wild_n = len(set(search_anki(term, deck=deck, field=None)) - set(card_ids))
-                if not card_ids: # and not wild_n:
-                    # Fetch (automatically when no local matches)
-                    card_id = None
-                    content = None
-
-                    if '*' in term:
-                        continue
-
-                    obj = search(term, lang=lang)
-                    content = obj and obj.get('definition')
-                    suggestions = obj and obj.get('suggestions') or []
-                    # If any, suggestions/content printed on next iteration.
-
-            elif key == 'u' and updatable:
-                update_card(card_id, back=content)
-                edits_n += 1
-
             else:
-                # Unrecognized command.
-                print("\a", end='', flush=True)
+                beep()
+        elif key == 'b' and term:
+            # Open Anki GUI Card browser/list,
+            # for the sake of editing/custom searches
+            if len(card_ids) > 1:
+                # Wildcard search fronts and backs
+                search_anki(term, deck=deck, field=None, browse=True)
+            else:
+                # Search 'front' for this one card
+                search_anki(term, deck=deck, field='front', browse=True)
+        elif key == 'w' and wild_n:
+            # wildcard search all fields (front, back, etc)
+            card_ids = search_anki(term, deck=deck, field=None)
+            card_ids_i = 0
+            wild_n = None
+            suggestions = []
+        elif key in ('n') and card_ids_i < len(card_ids) - 1:
+            card_ids_i += 1
+            info_print(f'{len(card_ids)=}\t{card_ids_i=}')
+        elif key in ('p', 'N') and card_ids_i > 0:
+            card_ids_i -= 1
+
+        elif key == 'f' and term:
+            # Fetch (remote dictionary service)
+            obj = search(term, lang=deck)
+            content = obj and obj.get('definition')
+            suggestions = obj and obj.get('suggestions') or []
+            if content:
+                card_id = None
+                card_ids = []
+            # If any, suggestions/content printed on next iteration.
+
+        elif key == 'r' and term:
+            # Replace old content (check remote dictionary service first).
+            content_old = content
+            # Get the 'front' value of the last displayed card,
+            # since this might be a multi-resultset
+            front = card['fields']['Front']['value']
+            obj = search(front, lang=deck)
+            content = obj and obj.get('definition')
+            suggestions = obj and obj.get('suggestions') or []
+
+            if not content and not suggestions:
+                ...
+                # TODO warn
+
+            if card_id and content:
+                normalized = normalizer(content, term=front)
+
+                # TODO idempotent?
+                normalized2 = normalizer(normalized, term=front)
+                if normalized != normalized2:
+                    info_print("Normalizer not idempotent")
+
+                if content_old == normalized :
+                    info_print("Identical to origin (normalized)")
+                    continue
+
+                info_print()
+                print(renderer(normalized, front, term=front, deck=deck))
+
+                # print a diff to make it easier to see if any important customizations would be lost
+                # TODO factor this out
+                info_print()
+                diff_lines = list(Differ().compare(content_old.splitlines(),normalized.splitlines()))
+                for i in range(len(diff_lines)) :
+                    diff_lines[i] = re.sub(r'^(\+\s*\S+.*?)$',    GREEN + r'\1' + RESET, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\-\s*\S+.*?)$',      RED + r'\1' + RESET, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\?\s*\S+.*?)$', WHITE_LT + r'\1' + RESET, diff_lines[i])
+                print(*diff_lines, sep='\n')
+
+                try:
+                    prompt = "\nReplace " + COLOR_COMMAND + front + RESET + " with this definition? N/y: "
+                    reply = input(prompt)
+                except:
+                    reply = None
+                if reply and reply.casefold() == 'y':
+                    # TODO save the normalized version
+                    # update_card(card_id, back=content)
+                    update_card(card_id, back=normalized)
+                    edits_n += 1
+
+        elif key == 'g' and term:
+            search_google(term)
+        elif key == 'o' and term:
+            url_term = urllib.parse.quote(term) # For web searches
+            # TODO this should use whatever the currently active dictionary is
+            url=f'http://www.woorden.org/woord/{url_term}'
+            launch_url(url)
+        elif key == 'a' and not card_id:
+            add_card(term, content, deck=deck)
+            edits_n += 1
+
+            # And search it to verify
+            card_ids = search_anki(term, deck=deck)
+            card_ids_i = 0
+        elif key == 'e' and empty_ids:
+            # TODO implement a Card object to use here
+            card_id = empty_ids[0]
+            term = get_card(card_id)['fields']['Front']['value']
+            delete_card(card_id)
+            empty_ids = get_empties(deck)
+            card_id = None
+            card_ids = []
+            wild_n  = None
+            edits_n += 1
+            # Update readline, as if I had searched for this term
+            readline.add_history(term)
+
+            # auto fetch
+            clear_line()
+            obj = search(term, lang=deck)
+            content = obj and obj.get('definition')
+            suggestions = obj and obj.get('suggestions') or []
+            # If any, suggestions/content printed on next iteration.
+
+        elif key in ('s', '/', '\x10', '\x1b[A'):
+            # Exact match search
+            # The \x10 is Ctrl-P which is readline muscle memory for 'previous' line.
+            # The \x1b[A is the up key ↑ which is readline muscle memory for 'previous' line.
+
+            content = None
+            suggestions = []
+
+            # TODO factor the prompt of 'term' into a function?
+            clear_line()
+            try:
+                term = input(f"Search: {COLOR_VALUE + deck + RESET}/")
+            except:
+                continue
+            term = term.strip()
+            if not term:
+                continue
+
+            # Allow to switch deck and search in one step, via a namespace-like search.
+            # (Assumes that deck names are 2-letter language codes)
+            # e.g. 'nl:zien' would switch deck to 'nl' first, and then search for 'zien'.
+            # Also allow separators [;/:] to obviate pressing Shift
+            decks_re = '|'.join(decks := get_deck_names())
+            if match := re.match('\s*([a-z]{2})\s*[:;/]\s*(.*)', term):
+                lang, term = match.groups()
+                if re.match(f'({decks_re})', lang):
+                    deck = lang
+            else:
+                lang = deck
+
+            card_ids = search_anki(term, deck=deck)
+            card_ids_i = 0
+            # Check other possible query types:
+            # TODO do all the searches (by try to minimise exact and wildcard into one request)
+            # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
+
+            wild_n = len(set(search_anki(term, deck=deck, field=None)) - set(card_ids))
+            if not card_ids: # and not wild_n:
+                # Fetch (automatically when no local matches)
+                card_id = None
+                content = None
+
+                if '*' in term:
+                    continue
+
+                obj = search(term, lang=lang)
+                content = obj and obj.get('definition')
+                suggestions = obj and obj.get('suggestions') or []
+                # If any, suggestions/content printed on next iteration.
+
+        elif key == 'u' and updatable:
+            update_card(card_id, back=content)
+            info_print(f"\t\t\t\t\t\tUpdated {card_id}\t{front}")
+            edits_n += 1
+
+        else:
+            # Unrecognized command.
+            print("\a", end='', flush=True)
 
 
 def completer(text: str, state: int) -> str:
@@ -1411,13 +1473,19 @@ def completer(text: str, state: int) -> str:
 if __name__ == "__main__":
     decks = get_deck_names()
     parser = OptionParser()
-    parser.add_option('-d', "--debug", dest='debug', action='store_true')
-    parser.add_option("-k", "--deck", dest="deck",
+    parser.add_option('-d', "--debug",       dest='debug',  action='store_true')
+    parser.add_option('-s', "--auto-scroll", dest='scroll', action='store_true',
+        help="Iterate over all cards when multiple results. Useful in combo with --auto-update"
+        )
+    parser.add_option('-u', "--auto-update", dest='update', action='store_true',
+        help="Replace the source of each viewed card with the rendered plain text, if different"
+        )
+    parser.add_option('-k', "--deck",        dest='deck',
         help="Name of Anki deck to use (must be a 2-letter language code, e.g. 'en')"
         )
     (options, args) = parser.parse_args()
 
-    options.debug =  not not sys.gettrace()
+    options.debug = options.debug or not not sys.gettrace()
 
     if not options.deck:
         # Take the first deck by default; fail if there are none

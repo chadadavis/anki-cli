@@ -421,20 +421,14 @@ def normalizer(string, *, term=None):
     # Remove hover tip on IPA pronunciation
     string = re.sub(r'(?s)<a class="?help"? .*?>', '', string)
     # Ensure headings begin on their own line (also covers plural forms, eg "Synoniemen")
-    string = re.sub(r'(?<!\n)(Uitspraak|Vervoeging|Voorbeeld|Synoniem|Antoniem)', r'\n\1', string)
+    string = re.sub(r'(?m)(?:\n*)(Afbreekpatroon|Uitspraak|Vervoeging|Verbuiging|Synoniem|Antoniem)', r'\n\1', string)
 
-    # NL-specific: Ensure that Voorbeeld(en): has a \n\n before it,
-    # to make the actual defnition stand out more.
-    string = re.sub(r'(?<!\n\n)(Voorbeeld(en)?:)', r'\n\n\1', string)
-    # And only one \n after the line
-    string = re.sub(r'(?m)(Voorbeeld(en)?:.*?$)(\n\n+)', r'\1\n', string)
-
-    string = re.sub(r'(?m)(^(Vervoeging(en)?|Verbuiging(en)?):)(\s*)', r'\1\n', string)
-
-    # NL-specific: Newlines before example `phrases in backticks`
+    # NL-specific: Newlines (just one) before example `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
-    # (using a negative lookbehind assertion here)
-    string = re.sub(r'(?<!\n)(`.*?`)', r'\n\1', string)
+    string = re.sub(r'(?m)(?:\n*)(`.*?`)', r'\n\1', string)
+
+    # One, and only one, newline \n after colon :
+    string = re.sub(r'(?m):\s*\n*', r':\n', string)
 
     # Remove seperators in plurals (eg in the section: "Verbuigingen")
     string = re.sub(r'\|', '', string)
@@ -451,6 +445,8 @@ def normalizer(string, *, term=None):
     string = re.sub(r';?\s*(\d+\. +)', r'\n\n\1', string)
     # And sub-definitions, also indented, marked by eg: a) or b)
     string = re.sub(r';?\s+([a-z]\) +)', r'\n  \1', string)
+    # Newline after /Phrases in slashes/ often used a context, if it's the start of the line
+    string = re.sub(r'(?m)^\s*(/.*?/)\s*', r'\1\n', string)
 
     # Max 2x newlines in a row
     string = re.sub(r'(\s*\n\s*){3,}', '\n\n', string)
@@ -1168,6 +1164,9 @@ def main(deck):
             clear_line()
             print(menu + '\r', end='', flush=True)
             key = readchar.readkey()
+            # Don't accept space(s),
+            # because it might be the user not realizing the pager has ended
+            if re.search(r'^\s*$', key): key = None
 
         # TODO smarter way to clear relevant state vars ?
         # What's the state machine/diagram behind all these?
@@ -1330,6 +1329,7 @@ def main(deck):
                 try:
                     prompt = "\nReplace " + COLOR_COMMAND + front + RESET + " with this definition? N/y: "
                     reply = input(prompt)
+                    # TODO remove 'y' from readline history
                 except:
                     reply = None
                 if reply and reply.casefold() == 'y':
@@ -1429,7 +1429,7 @@ def main(deck):
 
         else:
             # Unrecognized command.
-            print("\a", end='', flush=True)
+            beep()
 
 
 def completer(text: str, state: int) -> str:
@@ -1485,7 +1485,7 @@ if __name__ == "__main__":
         )
     (options, args) = parser.parse_args()
 
-    options.debug = options.debug or not not sys.gettrace()
+    options.debug = options.debug or bool(sys.gettrace())
 
     if not options.deck:
         # Take the first deck by default; fail if there are none

@@ -76,6 +76,20 @@ def backlog():
 
 # Backlog/TODO
 
+
+# Make the 'o' command open whatever the source page was (not just woorden.org)
+
+# TODO Address Pylance issues
+
+# Make constants for the keycodes, eg CTRL_C = '\x03'
+
+# Replace colors with `termcolor` lib?
+# TODO consider colorama here?
+
+# BUG no NL results from FD (from FreeDictionary)
+# Why does EN work when NL doesn't?
+# If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
+
 # Is there an API for FD? Doesn't seem like it.
 
 # Use freeDictionary API, so as to need less regex parsing
@@ -90,18 +104,17 @@ def backlog():
 # FR: Or use a diff source, eg TV5
 # https://langue-francaise.tv5monde.com/decouvrir/dictionnaire/f/franc
 
-# Make the 'o' command open whatever the source page was (not just woorden.org)
+# Add DWDS for better German defs (API?). But get IPA pronunciation elsewhere
+# (eg FreeDictionary or Wiktionary)
 
-# TODO Address Pylance issues
-
-# BUG no NL results from FD (from FreeDictionary)
-# Why does EN work when NL doesn't?
-# If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
-
-# Make constants for the keycodes, eg CTRL_C = '\x03'
-
-# Replace colors with `termcolor` lib?
-# TODO consider colorama here?
+# TODO
+# Think about how to add multiples webservices for a single deck/lang (?)
+# Eg beyond a dictionary, what about extra (web) services for:
+# synonyms, pronunciation, etymology, etc, or just allowing for multiple search providers
+# Maybe just:
+# { lang: en, dict: dictionary.com, syn/thes: somesynservice.com, ipa: some ipa service, etym: etymonline.com, ...}
+# Get IPA from Wiktionary (rather than FreeDictionary)?
+# And maybe later think about how to combine/concat these also to the same anki card ...
 
 # Logging:
 # look for log4j style debug mode console logging/printing (with colors)
@@ -147,18 +160,6 @@ def backlog():
 # Make a parser to grab and process it, like what's in the render() already, but then also replace it in the description.
 # Maybe copy out some things from render() that should be permanent into it's own def
 # And then update the card (like we did before to remove HTML from 'front')
-
-# Add DWDS for better German defs (API?). But get IPA pronunciation elsewhere
-# (eg FreeDictionary or Wiktionary)
-
-# TODO
-# Think about how to add multiples webservices for a single deck/lang (?)
-# Eg beyond a dictionary, what about extra (web) services for:
-# synonyms, pronunciation, etymology, etc, or just allowing for multiple search providers
-# Maybe just:
-# { lang: en, dict: dictionary.com, syn/thes: somesynservice.com, ipa: some ipa service, etym: etymonline.com, ...}
-# Get IPA from Wiktionary (rather than FreeDictionary)?
-# And maybe later think about how to combine/concat these also to the same anki card ...
 
 
 ################################################################################

@@ -1,4 +1,4 @@
-#!/usr/bin/env pypy3
+#!/usr/bin/env python3
 """Anki add - fetch online definitions and add cards to Anki vocabulary decks
 
 Based on this API: https://github.com/FooSoft/anki-connect/
@@ -53,22 +53,27 @@ import textwrap
 import time
 import urllib.parse
 import urllib.request
-from optparse import OptionParser
 from difflib import Differ
+from optparse import OptionParser
 
 import autopage
 import readchar
-import unidecode
-from bs4 import BeautifulSoup
-from iso639 import languages # NB, the pip package is called iso-639 (with a -)
-from nltk.stem.snowball import SnowballStemmer
-
-# This override is necessary for wildcard searches, due to extra interpolation.
+# The override for `re` is necessary for wildcard searches, due to extra interpolation.
 # Otherwise 're' raises an exception. Search for 'regex' below.
 # https://learnbyexample.github.io/py_regular_expressions/gotchas.html
 # https://docs.python.org/3/library/re.html#re.sub
 # "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
 import regex as re
+import unidecode
+# NB, the pip package is called iso-639 (with "-"). And this is TODO DEPRECATED
+# DEPRECATION: iso-639 is being installed using the legacy 'setup.py install'
+# method, because it does not have a 'pyproject.toml' and the 'wheel' package is
+# not installed. pip 23.1 will enforce this behavior change. A possible
+# replacement is to enable the '--use-pep517' option. Discussion can be found at
+# https://github.com/pypa/pip/issues/8559
+from iso639 import languages
+from nltk.stem.snowball import SnowballStemmer
+
 
 # This bogus def just makes it easier for me to jump here in my editor
 def backlog():
@@ -1497,7 +1502,7 @@ if __name__ == "__main__":
     readline.parse_and_bind("tab: complete")
 
     # Set terminal title, to be able to search through windows
-    title = "Anki CLI card mgr"
+    title = "anki-add-cli : card mgr"
     if options.debug:
         title = "debug: " + title
     sys.stdout.write('\x1b]2;' + title + '\x07')

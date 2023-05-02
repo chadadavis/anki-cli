@@ -1,0 +1,9 @@
+autopage
+click
+iso-639
+joblib
+nltk
+readchar
+regex
+tqdm
+Unidecode

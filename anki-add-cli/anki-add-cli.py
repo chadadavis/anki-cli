@@ -71,6 +71,7 @@ import unidecode
 # not installed. pip 23.1 will enforce this behavior change. A possible
 # replacement is to enable the '--use-pep517' option. Discussion can be found at
 # https://github.com/pypa/pip/issues/8559
+from bs4 import BeautifulSoup
 from iso639 import languages
 from nltk.stem.snowball import SnowballStemmer
 
@@ -152,6 +153,9 @@ def backlog():
 # Repo/Packaging:
 # figure out how to package deps (eg readchar) and test it again after removing local install of readchar
 
+# Move this dir to its own repo
+# https://manpages.ubuntu.com/manpages/kinetic/en/man1/git-filter-repo.1.html
+
 # Stemming for search?
 # Or add the inflected forms to the card? as a new field?
 # Most useful for langs that you don't know so well.
@@ -204,25 +208,6 @@ KEYS_CLOSE = (
     # '\x04',     # Ctrl-D
     '\x17',     # Ctrl-W
     )
-
-# NB, because the sync operation opens new windows, the window list keeps growing.
-# So, you can't use a static window id here. So, use the classname to get them all.
-WINDOW_MIN =   'for w in `xdotool search --classname "Anki"`; do xdotool windowminimize --sync $w; done'
-WINDOW_RAISE = 'for w in `xdotool search --classname "Anki"`; do xdotool windowraise $w; done'
-
-def __launch_anki():
-    """Try to launch Anki, if not already running, and verify launch.
-
-    This is quite fragile. Since it's not very reliable, it might be more
-    effective to not run this every time on startup, but only e.g. after an API
-    call fails.
-
-    Also attempts to minimize Anki after successful launch.
-
-    BUG: The sleep 2 at the start seems needed because `MINIMIZER` succeeds
-    because the app is running, but it hasn't finished creating the window yet?
-    """
-    os.system(f'anki >/dev/null & for i in 1 2 3 4 5; do sleep 2; if {WINDOW_MIN}; then break; else echo Waiting ... $i; sleep 1; fi; done')
 
 
 def request(action, **params):
@@ -434,7 +419,7 @@ def normalizer(string, *, term=None):
     string = re.sub(r'(?m)(?:\n*)(`.*?`)', r'\n\1', string)
 
     # One, and only one, newline \n after colon :
-    string = re.sub(r'(?m):\s*\n*', r':\n', string)
+    string = re.sub(r'(?m):(\s+|$)\n*', r':\n', string)
 
     # Remove seperators in plurals (eg in the section: "Verbuigingen")
     string = re.sub(r'\|', '', string)
@@ -447,8 +432,9 @@ def normalizer(string, *, term=None):
     # DE-specific:
     # Ensure new sections start a new paragraph, eg I. II. III. IV.
     string = re.sub(r'\s+(I{1,3}V?\.)', r'\n\n\1', string)
-    # New paragraph for each definition on the card, marked by eg: 1. or 2.
-    string = re.sub(r';?\s*(\d+\. +)', r'\n\n\1', string)
+    # New paragraph for each definition on the card, marked by eg: ...; 1. ...
+    string = re.sub(r';\s*(\d+\. +)', r'\n\n\1', string)
+    string = re.sub(r'(?m)^\s*(\d+\. +)', r'\n\n\1', string)
     # And sub-definitions, also indented, marked by eg: a) or b)
     string = re.sub(r';?\s+([a-z]\) +)', r'\n  \1', string)
     # Newline after /Phrases in slashes/ often used a context, if it's the start of the line
@@ -668,10 +654,10 @@ def search(term, *, lang):
     return obj
 
 
-def search_anki(term, *, deck, wild=False, field='front', browse=False):
+def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''):
 
     # If term contains whitespace, either must quote the whole thing, or replace spaces:
-    search_term = re.sub(r' ', '_', term) # For Anki searches
+    search_query = re.sub(r' ', '_', query) # For Anki searches
 
     # TODO accent-insensitive search?
     # eg exploit should find geëxploiteerd
@@ -681,9 +667,9 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     # Or see how it's being done inside this addon:
     # https://ankiweb.net/shared/info/1924690148
 
-    terms = [search_term]
+    search_terms = [search_query]
 
-    # Collapse double letters into a disjunction, eg: (NL-specific)
+    # Collapse double letters \p{L} into a disjunction, eg: (NL-specific)
     # This implies that the user should, when in doubt, use double chars in the query
     # deck:nl (front:maaken OR front:maken)
     # or use a re: (but that doesn't seem to work)
@@ -691,18 +677,19 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
     # TODO consider a stemming library here?
     if deck == 'nl':
         while True:
-            next_term = re.sub(r'(.)\1', r'\1', search_term, count=1)
-            if next_term == search_term:
+            next_term = re.sub(r'(\p{L})\1', r'\1', search_query, count=1)
+            if next_term == search_query:
                 break
-            terms += [next_term]
-            search_term = next_term
+            search_terms += [next_term]
+            search_query = next_term
 
     if field:
         if wild:
             # Wrap *stars* around (each) term.
             # Note, only necessary if using 'field', since it's default otherwise
-            terms = map(lambda x: f'*{x}*', terms)
-        terms = map(lambda x: field + ':' + x, terms)
+            search_terms = map(lambda x: f'*{x}*', search_terms)
+
+        search_terms = map(lambda x: field + ':' + x, search_terms)
 
         # Regex search of declinations:
         # This doesn't really work, since the text in the 'back' field isn't consistent.
@@ -717,13 +704,18 @@ def search_anki(term, *, deck, wild=False, field='front', browse=False):
         # reliable), we could (auto?) add these as tags to the cards, and then
         # also search the tags (?)
 
-    query = f'deck:{deck} (' + ' OR '.join([*terms]) + ')'
+    search_query = f'deck:{deck} (' + ' OR '.join([*search_terms]) + ')'
     # debug_print(f'{query=}')
 
     if browse:
-        card_ids = invoke('guiBrowse', query=query)
+        # In browse mode, also search for any singular term. This is useful when
+        # paging through a resultset, but I want to edit the current card. Then
+        # the browse UI will only show this one card, but if I want to see the
+        # rest of the cards, then I can just delete this final term from the
+        # query field in the UI.
+        card_ids = invoke('guiBrowse', query=search_query + ' ' + term)
     else:
-        card_ids = invoke('findCards', query=query)
+        card_ids = invoke('findCards', query=search_query)
         card_ids = card_ids or []
     return card_ids
 
@@ -778,10 +770,10 @@ def info_print(*values):
     LINE_WIDTH = os.get_terminal_size().columns
 
     print(GREY, end='')
-    print('_' * LINE_WIDTH)
-    print(*values)
+    print('─' * LINE_WIDTH)
     print(RESET, end='')
     if values:
+        print(*values)
         print()
 
 
@@ -986,8 +978,6 @@ def normalize_card(card):
 
 def sync():
     invoke('sync')
-    # And minimize it again
-    os.system(WINDOW_MIN)
 
 
 def clear_line():
@@ -1082,7 +1072,7 @@ def main(deck):
             info_print()
             print("\n" * lines_n)
 
-        # If --auto-scroll (for --auto-update), not need to print every definition along the way
+        # If --auto-scroll (ie when using --auto-update), no need to print every definition along the way
         if not options.scroll :
             with autopage.AutoPager() as out:
                 print('\n' + normalized, file=out)
@@ -1168,6 +1158,7 @@ def main(deck):
             key = 'n'
         while not key:
             clear_line()
+            info_print()
             print(menu + '\r', end='', flush=True)
             key = readchar.readkey()
             # Don't accept space(s),
@@ -1253,6 +1244,7 @@ def main(deck):
         elif key in ['y', '*']:
             sync()
             edits_n = 0
+
         elif key == 't' and card_id:
             if delete_card(card_id):
                 edits_n += 1
@@ -1267,7 +1259,7 @@ def main(deck):
             # for the sake of editing/custom searches
             if len(card_ids) > 1:
                 # Wildcard search fronts and backs
-                search_anki(term, deck=deck, field=None, browse=True)
+                search_anki(term, deck=deck, field=None, browse=True, term=card and card['fields']['Front']['value'])
             else:
                 # Search 'front' for this one card
                 search_anki(term, deck=deck, field='front', browse=True)
@@ -1279,7 +1271,6 @@ def main(deck):
             suggestions = []
         elif key in ('n') and card_ids_i < len(card_ids) - 1:
             card_ids_i += 1
-            info_print(f'{len(card_ids)=}\t{card_ids_i=}')
         elif key in ('p', 'N') and card_ids_i > 0:
             card_ids_i -= 1
 
@@ -1335,14 +1326,14 @@ def main(deck):
                 try:
                     prompt = "\nReplace " + COLOR_COMMAND + front + RESET + " with this definition? N/y: "
                     reply = input(prompt)
-                    # TODO remove 'y' from readline history
                 except:
                     reply = None
-                if reply and reply.casefold() == 'y':
-                    # TODO save the normalized version
-                    # update_card(card_id, back=content)
-                    update_card(card_id, back=normalized)
-                    edits_n += 1
+                if reply:
+                    # Don't litter readline history with 'y' and 'n'
+                    readline.remove_history_item(readline.get_current_history_length() - 1)
+                    if reply.casefold() == 'y':
+                        update_card(card_id, back=normalized)
+                        edits_n += 1
 
         elif key == 'g' and term:
             search_google(term)
@@ -1500,6 +1491,11 @@ if __name__ == "__main__":
     readline.set_completer(completer)
     readline.set_completer_delims('')
     readline.parse_and_bind("tab: complete")
+
+    # For autopage. When the EOF of the long definition is printed,
+    # automatically end the pager process, without requiring the user to press
+    # another key to ACK the EOF.
+    os.environ['LESS'] = os.environ['LESS'] + ' --QUIT-AT-EOF'
 
     # Set terminal title, to be able to search through windows
     title = "anki-add-cli : card mgr"

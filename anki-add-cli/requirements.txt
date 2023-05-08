@@ -1,9 +1,12 @@
 autopage
+beautifulsoup4
+bs4
 click
 iso-639
 joblib
 nltk
 readchar
 regex
+soupsieve
 tqdm
 Unidecode

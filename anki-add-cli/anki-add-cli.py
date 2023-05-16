@@ -82,15 +82,22 @@ def backlog():
 
 # Backlog/TODO
 
+# BUG parsing broken for words that aren't in Woorden, but extracted from 3rd parties, eg encyclo.nl
+#  'stokken', 'tussenin', 'hangertje'
 
 # Make the 'o' command open whatever the source page was (not just woorden.org)
 
-# TODO Address Pylance issues
+# TODO make a class for a Card ?
+# So, we don't have to keep digging into card['fields']...
 
-# Make constants for the keycodes, eg CTRL_C = '\x03'
+# TODO Address Pylance issues, eg type hints
+
+# TODO consider switching to curses lib
 
 # Replace colors with `termcolor` lib?
 # TODO consider colorama here?
+
+# Run the queries needed to update the menu in a separate thread, update the UI quicker
 
 # BUG no NL results from FD (from FreeDictionary)
 # Why does EN work when NL doesn't?
@@ -132,17 +139,14 @@ def backlog():
 
 # Since I'd also like to try to make formatted text versions for other
 # languages, maybe regex-based rendering isn't the most sustainable approach.
-
-# Convert HTML to Markdown?
-
-# Consider library html2text
-
-# Would an XSLT, per source, make sense for the HTML def content?
-# https://www.w3schools.com/xml/xsl_intro.asp
-
 # Replace regex doc parsing with eg
 # https://www.scrapingbee.com/blog/python-web-scraping-beautiful-soup/
 # And use CSS selectors to extract content more robustly
+# use BeautifulSoup?
+# Convert HTML to Markdown?
+# Consider library html2text
+# Would an XSLT, per source, make sense for the HTML def content?
+# https://www.w3schools.com/xml/xsl_intro.asp
 
 # Consider alternative addons for Anki (for creating new cards using online dicts)
 # https://ankiweb.net/shared/info/1807206748
@@ -170,22 +174,24 @@ def backlog():
 # Maybe copy out some things from render() that should be permanent into it's own def
 # And then update the card (like we did before to remove HTML from 'front')
 
+# See other TODOs below ...
 
 ################################################################################
 
 
 # Color codes:
-# The '1;' makes a foreground color bold/bright as well.
+# The leading '1;' makes a foreground color bold/bright as well.
 # https://stackoverflow.com/a/33206814/256856
 YELLOW    = "\033[0;33m"
 YELLOW_LT = "\033[1;33m"
+YELLOW_BT = "\033[0;93m" #Bright
 GREEN     = "\033[0;32m"
 GREEN_LT  = "\033[1;32m"
 BLUE      = "\033[0;34m"
 BLUE_LT   = "\033[1;34m"
 RED       = "\033[0;31m"
 RED_LT    = "\033[1;31m"
-GREY      = "\033[0;02m"
+GRAY      = "\033[0;02m"
 GRAY_LT   = "\033[1;02m"
 WHITE     = "\033[0;37m"
 WHITE_LT  = "\033[1;37m"
@@ -194,20 +200,19 @@ RESET     = "\033[0;00m"
 # Abstract colors into use cases, in case we want to change the mapping later
 COLOR_COMMAND   = WHITE_LT
 COLOR_WARN      = YELLOW_LT
-COLOR_VALUE     = BLUE_LT
+COLOR_INFO      = GRAY
 COLOR_OK        = GREEN_LT
-COLOR_HIGHLIGHT = YELLOW
-# TODO update render() and info_print() to use these too
+COLOR_VALUE     = GREEN_LT
+COLOR_HIGHLIGHT = YELLOW_BT
 
-# Key commands that close the app
-KEYS_CLOSE = (
-    'q',
-    'x',
-    '\x1b\x1b', # ESC-ESC
-    # '\x03',     # Ctrl-C
-    # '\x04',     # Ctrl-D
-    '\x17',     # Ctrl-W
-    )
+# The Esc key is doubled, since it's is a modifier and isn't accepted solo
+KEY_ESC_ESC = '\x1b\x1b'
+KEY_CTRL_C  = '\x03'
+KEY_CTRL_D  = '\x04'
+KEY_CTRL_L  = '\x0c'
+KEY_CTRL_P  = '\x10'
+KEY_CTRL_W  = '\x17'
+KEY_UP      = '\x1b[A'
 
 
 def request(action, **params):
@@ -269,7 +274,7 @@ def normalizer(string, *, term=None):
     string = re.sub(r'&gt;|》', ')', string)
     string = re.sub(r'&nbsp;', ' ', string)
     # Other superfluous chars:
-    string = re.sub(r'《/?em》', '', string)
+    string = re.sub(r'《/?em》|«|»', '', string)
 
     # Replace HTML entities with unicode chars (for IPA symbols, etc)
     string = html.unescape(string)
@@ -350,7 +355,7 @@ def normalizer(string, *, term=None):
             ...
         else:
             # Notify, so you can (manually) add this one to the 'categories' list above.
-            print(f'\nNew category [{YELLOW_LT}{category}{RESET}]\n',)
+            print(f'\nNew category [{COLOR_WARN}{category}{RESET}]\n',)
             beep()
             time.sleep(5)
 
@@ -629,7 +634,7 @@ def highlighter(string, query, *, term=None, deck=None):
             x,y = t
             # Also, here, y before x, since back-to-front
             l.insert(y, RESET)
-            l.insert(x, YELLOW)
+            l.insert(x, COLOR_HIGHLIGHT)
 
         string = ''.join(l)
     else:
@@ -637,7 +642,7 @@ def highlighter(string, query, *, term=None, deck=None):
         # Just do case-insensitive highlighting.
         # NB, the (?i:...) doesn't create a group.
         # That's why ({highlight}) needs it's own parens here.
-        string = re.sub(f"(?i:({highlight_re}))", YELLOW + r'\1' + RESET, string)
+        string = re.sub(f"(?i:({highlight_re}))", COLOR_HIGHLIGHT + r'\1' + RESET, string)
 
     return string
 
@@ -766,10 +771,9 @@ def get_empties(deck):
 
 
 def info_print(*values):
-    # TODO Use colorama
     LINE_WIDTH = os.get_terminal_size().columns
 
-    print(GREY, end='')
+    print(COLOR_INFO, end='')
     print('─' * LINE_WIDTH)
     print(RESET, end='')
     if values:
@@ -799,7 +803,7 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     query_term = urllib.parse.quote(term) # For web searches
     url = url + query_term
     clear_line()
-    print(GREY + f"Fetching: {url} ..." + RESET, end='', flush=True)
+    print(COLOR_INFO + f"Fetching: {url} ..." + RESET, end='', flush=True)
 
     try:
         response = urllib.request.urlopen(url)
@@ -819,11 +823,6 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     # &copy:       http://www.woorden.org/woord/zien
     # Bron:        http://www.woorden.org/woord/glashelder
 
-    # TODO extract smarter. Check DOM parsing libs / XPATH selection / CSS selectors
-
-    # BUG parsing broken for words that aren't in Woorden, but extracted from 3rd parties, eg encyclo.nl
-    #  'stokken', 'tussenin', 'hangertje'
-
     match = re.search(f"(?s)(<h2.*?{term}.*?)(?=&copy|Bron:|<div|</div)", content)
     if not match:
         debug_print("No match in HTML document")
@@ -839,7 +838,7 @@ def search_thefreedictionary(term, *, lang):
     query_term = urllib.parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
     clear_line()
-    print(GREY + f"Fetching: {url} ..." + RESET, end='', flush=True)
+    print(COLOR_INFO + f"Fetching: {url} ..." + RESET, end='', flush=True)
     try:
         response = urllib.request.urlopen(url)
         content = response.read().decode('utf-8')
@@ -857,7 +856,6 @@ def search_thefreedictionary(term, *, lang):
         return
 
     clear_line()
-    # TODO extract smarter. Check DOM parsing libs / XPATH / CSS selector
     match = re.search('<div id="Definition"><section .*?>.*?</section>', content)
     if not match:
         return return_obj
@@ -954,7 +952,6 @@ def wrapper(string):
 
 
 def normalize_card(card):
-    # TODO make a class for a Card ?
     front = card['fields']['Front']['value']
     back = card['fields']['Back']['value']
     normalized = normalizer(back, term=front)
@@ -1030,11 +1027,10 @@ def main(deck):
 
     # The IDs of cards that only have a front, but not back (no definition)
     # This works like a queue of cards to be deleted, fetched and (re)added.
-    # (Because it's easier to just delete and re-add than to update ? TODO)
+    # (Because it's easier to just delete and re-add than to update)
     empty_ids = []
 
     # Clear/Scroll screen (we scroll here because 'clear' would erase history)
-    # TODO consider switching to curses lib
     if not options.debug:
         scroll_screen()
 
@@ -1156,14 +1152,17 @@ def main(deck):
             # 'update' is checked first, the current card will be updated, if
             # possible, before proceeding to the next card.
             key = 'n'
+
+
+        info_print()
         while not key:
             clear_line()
-            info_print()
             print(menu + '\r', end='', flush=True)
             key = readchar.readkey()
+            debug_print(f'{key=}')
             # Don't accept space(s),
             # because it might be the user not realizing the pager has ended
-            if re.search(r'^\s*$', key): key = None
+            if re.search(r'^\s+$', key): key = None
 
         # TODO smarter way to clear relevant state vars ?
         # What's the state machine/diagram behind all these?
@@ -1184,21 +1183,20 @@ def main(deck):
         # y Sync
         # * Sync
 
-        if key in KEYS_CLOSE:
+        # TODO refactor the below into a dispatch table
+        # Then I can add a '?' function that programmatically lists available shortcuts
+
+        if key in ('q', 'x', KEY_CTRL_W, KEY_ESC_ESC) :
             clear_line()
             exit()
-        elif key == '.':
+        elif key in ('.') :
             # Reload (for 'live' editing / debugging)
             tl = time.localtime(os.path.getmtime(sys.argv[0]))[0:6]
             ts = "%04d-%02d-%02d %02d:%02d:%02d" % tl
             info_print(f"{os.getpid()=} mtime={ts} {sys.argv[0]=}")
             os.execv(sys.argv[0], sys.argv)
-        elif key in ('\x0c', '\x03'):
-            # Ctrl-L or Ctrl-C clear screen
-            clear_screen()
         elif key == 'd':
             # Switch deck
-            # TODO refactor this out. Or use a curses lib.
             decks = get_deck_names()
             scroll_screen()
             print(COLOR_COMMAND)
@@ -1241,10 +1239,9 @@ def main(deck):
             suggestions = []
             content = None
             scroll_screen()
-        elif key in ['y', '*']:
+        elif key in ('y', '*') :
             sync()
             edits_n = 0
-
         elif key == 't' and card_id:
             if delete_card(card_id):
                 edits_n += 1
@@ -1301,9 +1298,10 @@ def main(deck):
             if card_id and content:
                 normalized = normalizer(content, term=front)
 
-                # TODO idempotent?
+                # idempotent?
                 normalized2 = normalizer(normalized, term=front)
                 if normalized != normalized2:
+                    # TODO WARN
                     info_print("Normalizer not idempotent")
 
                 if content_old == normalized :
@@ -1314,7 +1312,6 @@ def main(deck):
                 print(renderer(normalized, front, term=front, deck=deck))
 
                 # print a diff to make it easier to see if any important customizations would be lost
-                # TODO factor this out
                 info_print()
                 diff_lines = list(Differ().compare(content_old.splitlines(),normalized.splitlines()))
                 for i in range(len(diff_lines)) :
@@ -1350,7 +1347,6 @@ def main(deck):
             card_ids = search_anki(term, deck=deck)
             card_ids_i = 0
         elif key == 'e' and empty_ids:
-            # TODO implement a Card object to use here
             card_id = empty_ids[0]
             term = get_card(card_id)['fields']['Front']['value']
             delete_card(card_id)
@@ -1369,10 +1365,8 @@ def main(deck):
             suggestions = obj and obj.get('suggestions') or []
             # If any, suggestions/content printed on next iteration.
 
-        elif key in ('s', '/', '\x10', '\x1b[A'):
+        elif key in ('s', '/', KEY_CTRL_P, KEY_UP):
             # Exact match search
-            # The \x10 is Ctrl-P which is readline muscle memory for 'previous' line.
-            # The \x1b[A is the up key ↑ which is readline muscle memory for 'previous' line.
 
             content = None
             suggestions = []

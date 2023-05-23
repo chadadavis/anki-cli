@@ -54,6 +54,7 @@ import time
 import urllib.parse
 import urllib.request
 from difflib import Differ
+from enum import StrEnum
 from optparse import OptionParser
 
 import autopage
@@ -88,7 +89,16 @@ def backlog():
 # Make the 'o' command open whatever the source page was (not just woorden.org)
 
 # TODO make a class for a Card ?
+# Easiest to just use:
+# https://docs.python.org/3/library/dataclasses.html
+# from dataclasses import dataclass
+# @dataclass
+# class Card:
+#     front: str
+#     back: str
+#     ...
 # So, we don't have to keep digging into card['fields']...
+# But maybe I need some accessors ... or a constructor to breadown the card['fields']... Or maybe a 'match' statement?
 
 # TODO Address Pylance issues, eg type hints
 
@@ -204,15 +214,17 @@ COLOR_INFO      = GRAY
 COLOR_OK        = GREEN_LT
 COLOR_VALUE     = GREEN_LT
 COLOR_HIGHLIGHT = YELLOW_BT
+COLOR_RESET     = RESET
 
-# The Esc key is doubled, since it's is a modifier and isn't accepted solo
-KEY_ESC_ESC = '\x1b\x1b'
-KEY_CTRL_C  = '\x03'
-KEY_CTRL_D  = '\x04'
-KEY_CTRL_L  = '\x0c'
-KEY_CTRL_P  = '\x10'
-KEY_CTRL_W  = '\x17'
-KEY_UP      = '\x1b[A'
+
+class Key(StrEnum):
+    # The Esc key is doubled, since it's is a modifier and isn't accepted solo
+    ESC_ESC = '\x1b\x1b'
+    CTRL_C  = '\x03'
+    CTRL_D  = '\x04'
+    CTRL_P  = '\x10'
+    CTRL_W  = '\x17'
+    UP      = '\x1b[A'
 
 
 def request(action, **params):
@@ -355,7 +367,7 @@ def normalizer(string, *, term=None):
             ...
         else:
             # Notify, so you can (manually) add this one to the 'categories' list above.
-            print(f'\nNew category [{COLOR_WARN}{category}{RESET}]\n',)
+            print(f'\nNew category [{COLOR_WARN}{category}{COLOR_RESET}]\n',)
             beep()
             time.sleep(5)
 
@@ -608,9 +620,6 @@ def highlighter(string, query, *, term=None, deck=None):
         # TODO
         # EN: v. walked, walk·ing, walks
 
-    else:
-        ...
-
     # Sort the highlight terms so that the longest are first.
     # Since inflections might be prefixes.
     # i.e. this will prefer matching 'kinderen' before 'kind'
@@ -633,7 +642,7 @@ def highlighter(string, query, *, term=None, deck=None):
         for t in reversed(spans):
             x,y = t
             # Also, here, y before x, since back-to-front
-            l.insert(y, RESET)
+            l.insert(y, COLOR_RESET)
             l.insert(x, COLOR_HIGHLIGHT)
 
         string = ''.join(l)
@@ -642,7 +651,7 @@ def highlighter(string, query, *, term=None, deck=None):
         # Just do case-insensitive highlighting.
         # NB, the (?i:...) doesn't create a group.
         # That's why ({highlight}) needs it's own parens here.
-        string = re.sub(f"(?i:({highlight_re}))", COLOR_HIGHLIGHT + r'\1' + RESET, string)
+        string = re.sub(f"(?i:({highlight_re}))", COLOR_HIGHLIGHT + r'\1' + COLOR_RESET, string)
 
     return string
 
@@ -775,7 +784,7 @@ def info_print(*values):
 
     print(COLOR_INFO, end='')
     print('─' * LINE_WIDTH)
-    print(RESET, end='')
+    print(COLOR_RESET, end='')
     if values:
         print(*values)
         print()
@@ -803,7 +812,7 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     query_term = urllib.parse.quote(term) # For web searches
     url = url + query_term
     clear_line()
-    print(COLOR_INFO + f"Fetching: {url} ..." + RESET, end='', flush=True)
+    print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
 
     try:
         response = urllib.request.urlopen(url)
@@ -838,7 +847,7 @@ def search_thefreedictionary(term, *, lang):
     query_term = urllib.parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
     clear_line()
-    print(COLOR_INFO + f"Fetching: {url} ..." + RESET, end='', flush=True)
+    print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
     try:
         response = urllib.request.urlopen(url)
         content = response.read().decode('utf-8')
@@ -1076,7 +1085,7 @@ def main(deck):
         if term and not content:
             info_print("No results: " + term)
             if wild_n:
-                info_print(f"(W)ilds:" + COLOR_VALUE + str(wild_n) + RESET)
+                info_print(f"(W)ilds:" + COLOR_VALUE + str(wild_n) + COLOR_RESET)
 
         if suggestions:
             info_print("Did you mean: (press TAB for autocomplete)")
@@ -1086,62 +1095,62 @@ def main(deck):
         menu = [ '' ]
 
         if options.debug:
-            menu += [ COLOR_WARN + "D" + RESET]
+            menu += [ COLOR_WARN + "D" + COLOR_RESET]
         if not term:
             menu += [ "        " ]
         else:
             if not card_id:
-                menu += [ COLOR_WARN + "+" + RESET ]
+                menu += [ COLOR_WARN + "+" + COLOR_RESET ]
                 menu += [ "(A)dd    " ]
                 menu += [ "(F)etch  " ]
             else:
                 if updatable:
-                    menu += [ COLOR_WARN + "⬆" + RESET]
+                    menu += [ COLOR_WARN + "⬆" + COLOR_RESET]
                     menu += [ "(U)pdate " ]
                 else:
-                    menu += [ COLOR_OK + "✓" + RESET]
+                    menu += [ COLOR_OK + "✓" + COLOR_RESET]
                     menu += [ "Dele(t)e " ]
                 menu += [ "(R)eplace" ]
                 if len(card_ids) > 1:
                     # Display in 1-based counting
                     menu += [
-                        "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:2d}/{len(card_ids):2d}" + RESET,
+                        "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:2d}/{len(card_ids):2d}" + COLOR_RESET,
                     ]
 
         menu += [ '|' ]
-        menu += [ "(D)eck:" + COLOR_VALUE + deck + RESET]
+        menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
         if edits_n:
-            menu += [ COLOR_WARN + "*" + RESET ]
+            menu += [ COLOR_WARN + "*" + COLOR_RESET ]
         else:
             menu += [ ' ' ]
 
         if n_old := get_old(deck) :
-            menu += [ "mature:" + COLOR_VALUE + str(n_old) + RESET ]
+            menu += [ "mature:" + COLOR_VALUE + str(n_old) + COLOR_RESET ]
         if n_mid := get_mid(deck) :
-            menu += [ "young:"  + COLOR_VALUE + str(n_mid) + RESET ]
+            menu += [ "young:"  + COLOR_VALUE + str(n_mid) + COLOR_RESET ]
         if n_due := get_due(deck) :
-            menu += [ "due:"    + COLOR_VALUE + str(n_due) + RESET ]
+            menu += [ "due:"    + COLOR_VALUE + str(n_due) + COLOR_RESET ]
         # if n_new := get_new(deck) :
         #     menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
 
         if empty_ids := get_empties(deck):
-            menu += [ "(E)mpties:" + COLOR_WARN + str(len(empty_ids)) + RESET ]
+            menu += [ "(E)mpties:" + COLOR_WARN + str(len(empty_ids)) + COLOR_RESET ]
 
         menu += [ "|", "(S)earch" ]
         if term:
             menu += [
-                COLOR_VALUE + term + RESET,
+                COLOR_VALUE + term + COLOR_RESET,
                 "(G)oogle", "(B)rowse",
             ]
 
             if wild_n:
-                menu += [ f"(W)ilds:" + COLOR_VALUE + str(wild_n) + RESET + ' more' ]
+                menu += [ f"(W)ilds:" + COLOR_VALUE + str(wild_n) + COLOR_RESET + ' more' ]
 
         # spell-checker:enable
 
         menu = ' '.join(menu)
         menu = re.sub(r'\(', COLOR_COMMAND, menu)
-        menu = re.sub(r'\)', RESET, menu)
+        menu = re.sub(r'\)', COLOR_RESET, menu)
 
         key = None
         if options.update and updatable and content:
@@ -1162,7 +1171,8 @@ def main(deck):
             debug_print(f'{key=}')
             # Don't accept space(s),
             # because it might be the user not realizing the pager has ended
-            if re.search(r'^\s+$', key): key = None
+            if re.search(r'^\s+$', key) :
+                key = None
 
         # TODO smarter way to clear relevant state vars ?
         # What's the state machine/diagram behind all these?
@@ -1184,9 +1194,16 @@ def main(deck):
         # * Sync
 
         # TODO refactor the below into a dispatch table
-        # Then I can add a '?' function that programmatically lists available shortcuts
+        # Does this really add much value to use 'match'
+        # Better to first just refactor big blocks into functions ...
 
-        if key in ('q', 'x', KEY_CTRL_W, KEY_ESC_ESC) :
+        # match key:
+        #     case 'n' if card_ids_i < len(card_ids) - 1:
+        #         card_ids_i += 1
+        #     case 'p' | 'N' if card_ids_i > 0:
+        #         card_ids_i -= 1
+
+        if key in ('x', 'q', Key.ESC_ESC) :
             clear_line()
             exit()
         elif key in ('.') :
@@ -1201,7 +1218,7 @@ def main(deck):
             scroll_screen()
             print(COLOR_COMMAND)
             print("\n * ".join(['', *decks]))
-            print(RESET)
+            print(COLOR_RESET)
 
             deck_prev = options.deck
             # Block autocomplete of dictionary entries
@@ -1315,13 +1332,13 @@ def main(deck):
                 info_print()
                 diff_lines = list(Differ().compare(content_old.splitlines(),normalized.splitlines()))
                 for i in range(len(diff_lines)) :
-                    diff_lines[i] = re.sub(r'^(\+\s*\S+.*?)$',    GREEN + r'\1' + RESET, diff_lines[i])
-                    diff_lines[i] = re.sub(r'^(\-\s*\S+.*?)$',      RED + r'\1' + RESET, diff_lines[i])
-                    diff_lines[i] = re.sub(r'^(\?\s*\S+.*?)$', WHITE_LT + r'\1' + RESET, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\+\s*\S+.*?)$',    GREEN + r'\1' + COLOR_RESET, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\-\s*\S+.*?)$',      RED + r'\1' + COLOR_RESET, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\?\s*\S+.*?)$', WHITE_LT + r'\1' + COLOR_RESET, diff_lines[i])
                 print(*diff_lines, sep='\n')
 
                 try:
-                    prompt = "\nReplace " + COLOR_COMMAND + front + RESET + " with this definition? N/y: "
+                    prompt = "\nReplace " + COLOR_COMMAND + front + COLOR_RESET + " with this definition? N/y: "
                     reply = input(prompt)
                 except:
                     reply = None
@@ -1365,7 +1382,7 @@ def main(deck):
             suggestions = obj and obj.get('suggestions') or []
             # If any, suggestions/content printed on next iteration.
 
-        elif key in ('s', '/', KEY_CTRL_P, KEY_UP):
+        elif key in ('s', '/', Key.CTRL_P, Key.UP):
             # Exact match search
 
             content = None
@@ -1374,7 +1391,7 @@ def main(deck):
             # TODO factor the prompt of 'term' into a function?
             clear_line()
             try:
-                term = input(f"Search: {COLOR_VALUE + deck + RESET}/")
+                term = input(f"Search: {COLOR_VALUE + deck + COLOR_RESET}/")
             except:
                 continue
             term = term.strip()
@@ -1421,6 +1438,8 @@ def main(deck):
         else:
             # Unrecognized command.
             beep()
+            # add a '?' function that programmatically lists available shortcuts (if they're available in a dict)
+
 
 
 def completer(text: str, state: int) -> str:

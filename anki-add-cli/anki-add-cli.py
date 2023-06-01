@@ -53,8 +53,10 @@ import textwrap
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from difflib import Differ
 from enum import StrEnum
+from functools import lru_cache
 from optparse import OptionParser
 
 import autopage
@@ -102,12 +104,18 @@ def backlog():
 
 # TODO Address Pylance issues, eg type hints
 
+
 # TODO consider switching to curses lib
+# And then I can use something like a progress bar for showing the timeout on the http requests ...
+# But, does anki-connect even process client requests async?
 
 # Replace colors with `termcolor` lib?
 # TODO consider colorama here?
 
 # Run the queries needed to update the menu in a separate thread, update the UI quicker
+# And maybe also the sync() since it should just be fire-and-forget
+# TODO make menu rendering async, or just make all external queries async?
+# Migrate from urrlib to httpx (or aiohttp) to use async
 
 # BUG no NL results from FD (from FreeDictionary)
 # Why does EN work when NL doesn't?
@@ -238,6 +246,7 @@ def request(action, **params):
 
 def invoke(action, **params):
     reqJson = json.dumps(request(action, **params)).encode('utf-8')
+    debug_print(reqJson)
     req = urllib.request.Request('http://localhost:8765', reqJson)
 
     try:
@@ -735,26 +744,33 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
 
 
 # This set does not overlap with get_mid() nor get_old()
-def get_new(deck):
+@lru_cache(maxsize=10)
+def get_new(deck, ts=None):
     card_ids = invoke('findCards', query=f"deck:{deck} is:new")
     return len(card_ids)
 
 
 # Cards due before 0 days from now.
-# Only if no reviews were done since midnight, since user has already reviewed deck today.
+# Only if no reviews were done since midnight (else user has already reviewed deck today)
 # This is to stimulate doing a review today, if it has any cards that can be reviewed.
 # This set does not overlap with get_new()
 # This set does overlap with get_mid() or get_old()
 # TODO this wrongly returns epoch_review == 0 for hierarchical decks (eg "Python")
 # TODO does this need to match the Anki setting "Next day begins N hours *after* midnight" ?
-def get_due(deck):
+@lru_cache(maxsize=10)
+def get_due(deck, ts=None):
     card_ids = []
     review_id = invoke('getLatestReviewID', deck=deck)
-    # Truncate milliseconds
+    # Truncate milliseconds off the timestamp (which is the review ID)
     epoch_review = int(review_id/1000)
-    # This just gets the YYYY,MM,DD out of the struct_time
-    # TODO find a more intuitive way to do this
-    epoch_midnight = int(time.mktime(tuple([ *time.localtime()[0:3], *[0]*5, -1 ])))
+
+    # Get the (epoch) time at midnight this morning,
+    # by converting now to a date (stripping the time off)
+    # then converting the date back to to a time
+    date_today = datetime.now().strftime('%Y-%m-%d')
+    epoch_midnight = int(datetime.strptime(date_today, '%Y-%m-%d').timestamp())
+
+    debug_print(f"if {epoch_review=} < {epoch_midnight=} : ...")
     if epoch_review < epoch_midnight :
         card_ids = invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
     return len(card_ids)
@@ -762,18 +778,21 @@ def get_due(deck):
 
 # Immature cards, short interval
 # This set does not overlap with get_new() nor get_old()
-def get_mid(deck):
+@lru_cache(maxsize=10)
+def get_mid(deck, ts=None):
     card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl<21")
     return len(card_ids)
 
 
 # Mature cards
 # This set does not overlap with get_new() nor get_mid()
-def get_old(deck):
+@lru_cache(maxsize=10)
+def get_old(deck, ts=None):
     card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl>=21")
     return len(card_ids)
 
 
+@lru_cache
 def get_empties(deck):
     card_ids = search_anki('', deck=deck, field='back')
     return card_ids
@@ -984,6 +1003,14 @@ def normalize_card(card):
 
 def sync():
     invoke('sync')
+    # And in case we downloaded new empty cards:
+    get_empties.cache_clear()
+
+    # These will expire in time ... can also just reload the script with key '.'
+    # get_new.cache_clear()
+    # get_due.cache_clear()
+    # get_mid.cache_clear()
+    # get_old.cache_clear()
 
 
 def clear_line():
@@ -1124,13 +1151,13 @@ def main(deck):
         else:
             menu += [ ' ' ]
 
-        if n_old := get_old(deck) :
+        if n_old := get_old(deck, ts=time.time()//3600) :
             menu += [ "mature:" + COLOR_VALUE + str(n_old) + COLOR_RESET ]
-        if n_mid := get_mid(deck) :
+        if n_mid := get_mid(deck, ts=time.time()//3600) :
             menu += [ "young:"  + COLOR_VALUE + str(n_mid) + COLOR_RESET ]
-        if n_due := get_due(deck) :
+        if n_due := get_due(deck, ts=time.time()//3600) :
             menu += [ "due:"    + COLOR_VALUE + str(n_due) + COLOR_RESET ]
-        # if n_new := get_new(deck) :
+        # if n_new := get_new(deck, ts=time.time()//3600) :
         #     menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
 
         if empty_ids := get_empties(deck):
@@ -1208,6 +1235,7 @@ def main(deck):
             exit()
         elif key in ('.') :
             # Reload (for 'live' editing / debugging)
+            # And show the last modification time of this file
             tl = time.localtime(os.path.getmtime(sys.argv[0]))[0:6]
             ts = "%04d-%02d-%02d %02d:%02d:%02d" % tl
             info_print(f"{os.getpid()=} mtime={ts} {sys.argv[0]=}")
@@ -1356,7 +1384,7 @@ def main(deck):
             # TODO this should use whatever the currently active dictionary is
             url=f'http://www.woorden.org/woord/{url_term}'
             launch_url(url)
-        elif key == 'a' and not card_id:
+        elif key == 'a' and term and not card_id:
             add_card(term, content, deck=deck)
             edits_n += 1
 
@@ -1367,6 +1395,7 @@ def main(deck):
             card_id = empty_ids[0]
             term = get_card(card_id)['fields']['Front']['value']
             delete_card(card_id)
+            get_empties.cache_clear()
             empty_ids = get_empties(deck)
             card_id = None
             card_ids = []
@@ -1481,7 +1510,6 @@ def completer(text: str, state: int) -> str:
 
 
 if __name__ == "__main__":
-    decks = get_deck_names()
     parser = OptionParser()
     parser.add_option('-d', "--debug",       dest='debug',  action='store_true')
     parser.add_option('-s', "--auto-scroll", dest='scroll', action='store_true',
@@ -1497,6 +1525,7 @@ if __name__ == "__main__":
 
     options.debug = options.debug or bool(sys.gettrace())
 
+    decks = get_deck_names()
     if not options.deck:
         # Take the first deck by default; fail if there are none
         options.deck = decks[0]

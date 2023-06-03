@@ -44,23 +44,33 @@ of raw text.
 # https://docs.rs/regex/1.3.9/regex/#syntax
 # But it unfortunately doesn't help much for the NL words from woorden.org due to the non-consistent format.
 
+import datetime
+import difflib
+import enum
+import functools
 import html
 import json
+import logging
+import optparse
 import os
 import readline
 import sys
 import textwrap
 import time
-import urllib.parse
-import urllib.request
-from datetime import datetime
-from difflib import Differ
-from enum import StrEnum
-from functools import lru_cache
-from optparse import OptionParser
+import urllib
 
 import autopage
-import readchar
+import bs4  # BeautifulSoup
+import httpx
+# NB, the pip package is called iso-639 (with "-").
+# And this is TODO DEPRECATED
+# DEPRECATION: iso-639 is being installed using the legacy 'setup.py install'
+# method, because it does not have a 'pyproject.toml' and the 'wheel' package is
+# not installed. pip 23.1 will enforce this behavior change. A possible
+# replacement is to enable the '--use-pep517' option. Discussion can be found at
+# https://github.com/pypa/pip/issues/8559
+import iso639  # Map e.g. 'de' to 'german', as required by SnowballStemmer
+import readchar  # For reading single key-press commands
 # The override for `re` is necessary for wildcard searches, due to extra interpolation.
 # Otherwise 're' raises an exception. Search for 'regex' below.
 # https://learnbyexample.github.io/py_regular_expressions/gotchas.html
@@ -68,14 +78,6 @@ import readchar
 # "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
 import regex as re
 import unidecode
-# NB, the pip package is called iso-639 (with "-"). And this is TODO DEPRECATED
-# DEPRECATION: iso-639 is being installed using the legacy 'setup.py install'
-# method, because it does not have a 'pyproject.toml' and the 'wheel' package is
-# not installed. pip 23.1 will enforce this behavior change. A possible
-# replacement is to enable the '--use-pep517' option. Discussion can be found at
-# https://github.com/pypa/pip/issues/8559
-from bs4 import BeautifulSoup
-from iso639 import languages
 from nltk.stem.snowball import SnowballStemmer
 
 
@@ -88,7 +90,7 @@ def backlog():
 # BUG parsing broken for words that aren't in Woorden, but extracted from 3rd parties, eg encyclo.nl
 #  'stokken', 'tussenin', 'hangertje'
 
-# Make the 'o' command open whatever the source page was (not just woorden.org)
+# Make the 'o' command open whatever the source URL was (not just woorden.org)
 
 # TODO make a class for a Card ?
 # Easiest to just use:
@@ -102,10 +104,20 @@ def backlog():
 # So, we don't have to keep digging into card['fields']...
 # But maybe I need some accessors ... or a constructor to breadown the card['fields']... Or maybe a 'match' statement?
 
-# TODO Address Pylance issues, eg type hints
+# TODO Address Pylance issues,
+# eg type hints
+# And then define types for defs
 
+# Logging:
+# Modifying it to send WARNING level messages also to logging.StreamHandler()
+# And INFO also the StreamHandler when in debug mode
+
+# Replace print() statements with a status() call (which can go into a curses window pane later ...)
 
 # TODO consider switching to curses lib
+# https://docs.python.org/3/howto/curses.html#curses-howto
+# Alternative libs: urwid prompt_toolkit blessings npyscreen
+
 # And then I can use something like a progress bar for showing the timeout on the http requests ...
 # But, does anki-connect even process client requests async?
 
@@ -113,7 +125,7 @@ def backlog():
 # TODO consider colorama here?
 
 # Run the queries needed to update the menu in a separate thread, update the UI quicker
-# And maybe also the sync() since it should just be fire-and-forget
+# And maybe also the sync() since it should just be fire-and-forget (but then update empties count)
 # TODO make menu rendering async, or just make all external queries async?
 # Migrate from urrlib to httpx (or aiohttp) to use async
 
@@ -147,9 +159,6 @@ def backlog():
 # Get IPA from Wiktionary (rather than FreeDictionary)?
 # And maybe later think about how to combine/concat these also to the same anki card ...
 
-# Logging:
-# look for log4j style debug mode console logging/printing (with colors)
-
 # Anki: unify note types (inheritance), not for this code, but in the app.
 # Learn what the purpose of different notes types is, and then make them all use
 # the same, or make them inherit from each other, so that I don't have to
@@ -164,13 +173,14 @@ def backlog():
 # Convert HTML to Markdown?
 # Consider library html2text
 # Would an XSLT, per source, make sense for the HTML def content?
+# eg this lib: https://lxml.de/
 # https://www.w3schools.com/xml/xsl_intro.asp
 
-# Consider alternative addons for Anki (for creating new cards using online dicts)
+# Consider alternative add-ons for Anki (for creating new cards using online dicts)
 # https://ankiweb.net/shared/info/1807206748
 # https://github.com/finalion/WordQuery
-# All addons:
-# https://ankiweb.net/shared/addons/
+# All add-ons:
+# https://ankiweb.net/shared/add-ons/
 
 # Repo/Packaging:
 # figure out how to package deps (eg readchar) and test it again after removing local install of readchar
@@ -225,7 +235,7 @@ COLOR_HIGHLIGHT = YELLOW_BT
 COLOR_RESET     = RESET
 
 
-class Key(StrEnum):
+class Key(enum.StrEnum):
     # The Esc key is doubled, since it's is a modifier and isn't accepted solo
     ESC_ESC = '\x1b\x1b'
     CTRL_C  = '\x03'
@@ -236,7 +246,7 @@ class Key(StrEnum):
 
 
 def request(action, **params):
-    """Send a request to Anki desktop via the API for the anki_connect addon
+    """Send a request to Anki desktop via the API for the anki-connect add-on
 
     Details:
     https://github.com/FooSoft/anki-connect/
@@ -246,22 +256,43 @@ def request(action, **params):
 
 def invoke(action, **params):
     reqJson = json.dumps(request(action, **params)).encode('utf-8')
-    debug_print(reqJson)
+    logging.debug(b'invoke() ' + reqJson, stacklevel=2)
     req = urllib.request.Request('http://localhost:8765', reqJson)
 
     try:
         response = json.load(urllib.request.urlopen(req))
         if response['error'] is not None:
-            info_print('error: ', response['error'])
+            logging.warning('error: ', response['error'])
             return None
         else:
             return response['result']
     except (ConnectionRefusedError, urllib.error.URLError) as e:
-        print(""""
-            Failed to connect to Anki. Make sure that Anki is running, and using the anki_connect addon.
-            https://github.com/FooSoft/anki-connect/
-        """)
+        msg = 'Failed to connect to Anki. Make sure that Anki is running, and using the anki-connect add-on.'
+        logging.warning(msg)
+        print(msg)
         return None
+
+
+# TODO
+async def ainvoke(action, **params):
+    reqJson = json.dumps(request(action, **params)).encode('utf-8')
+    logging.debug(b'ainvoke() ' + reqJson, stacklevel=2)
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post('http://localhost:8765', content=reqJson)
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            msg = 'Failed to connect to Anki. Make sure that Anki is running, and using the anki-connect add-on.'
+            logging.warning(msg)
+            print(msg)
+            return None
+
+        response = response.json()
+        if response['error'] is not None:
+            logging.warning(f"{response['error']=}")
+            return None
+        else:
+            logging.debug(f"{response['result']=}")
+            return response['result']
 
 
 def get_deck_names():
@@ -368,7 +399,7 @@ def normalizer(string, *, term=None):
     # Otherwise, they wouldn't be detected in old cards, if it's not already in [brackets]
     for match in re.findall(r'<sup>([a-z]+?)</sup>', string) :
         category = match
-        # debug_print(f'{category=}')
+        # logging.debug(f'{category=}')
         # If this is a known category, just format it as such.
         # (We're doing a regex match here, since a category name might be a regex.)
         string = re.sub(r'<sup>(\w+)</sup>', r'[\1]', string)
@@ -521,7 +552,7 @@ def highlighter(string, query, *, term=None, deck=None):
     # TODO also factor out the stemming (separate from highlighting, since lang-specific)
     if deck:
         # Map e.g. 'de' to 'german', as required by SnowballStemmer
-        lang = languages.get(alpha2=deck).name.lower()
+        lang = iso639.languages.get(alpha2=deck).name.lower()
         stemmer = SnowballStemmer(lang)
         stem = stemmer.stem(query)
         if stem != query:
@@ -687,7 +718,7 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
     # It should be possible with Anki's non-combining mode: nc:geëxploiteerd
     # https://docs.ankiweb.net/#/searching
     # But doesn't seem to work
-    # Or see how it's being done inside this addon:
+    # Or see how it's being done inside this add-on:
     # https://ankiweb.net/shared/info/1924690148
 
     search_terms = [search_query]
@@ -728,7 +759,7 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
         # also search the tags (?)
 
     search_query = f'deck:{deck} (' + ' OR '.join([*search_terms]) + ')'
-    # debug_print(f'{query=}')
+    logging.debug(f'{query=}')
 
     if browse:
         # In browse mode, also search for any singular term. This is useful when
@@ -744,7 +775,7 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
 
 
 # This set does not overlap with get_mid() nor get_old()
-@lru_cache(maxsize=10)
+@functools.lru_cache(maxsize=10)
 def get_new(deck, ts=None):
     card_ids = invoke('findCards', query=f"deck:{deck} is:new")
     return len(card_ids)
@@ -757,7 +788,7 @@ def get_new(deck, ts=None):
 # This set does overlap with get_mid() or get_old()
 # TODO this wrongly returns epoch_review == 0 for hierarchical decks (eg "Python")
 # TODO does this need to match the Anki setting "Next day begins N hours *after* midnight" ?
-@lru_cache(maxsize=10)
+@functools.lru_cache(maxsize=10)
 def get_due(deck, ts=None):
     card_ids = []
     review_id = invoke('getLatestReviewID', deck=deck)
@@ -767,10 +798,10 @@ def get_due(deck, ts=None):
     # Get the (epoch) time at midnight this morning,
     # by converting now to a date (stripping the time off)
     # then converting the date back to to a time
-    date_today = datetime.now().strftime('%Y-%m-%d')
-    epoch_midnight = int(datetime.strptime(date_today, '%Y-%m-%d').timestamp())
+    date_today = datetime.datetime.now().strftime('%Y-%m-%d')
+    epoch_midnight = int(datetime.datetime.strptime(date_today, '%Y-%m-%d').timestamp())
 
-    debug_print(f"if {epoch_review=} < {epoch_midnight=} : ...")
+    logging.debug(f"if {epoch_review=} < {epoch_midnight=} : ...")
     if epoch_review < epoch_midnight :
         card_ids = invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
     return len(card_ids)
@@ -778,7 +809,7 @@ def get_due(deck, ts=None):
 
 # Immature cards, short interval
 # This set does not overlap with get_new() nor get_old()
-@lru_cache(maxsize=10)
+@functools.lru_cache(maxsize=10)
 def get_mid(deck, ts=None):
     card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl<21")
     return len(card_ids)
@@ -786,38 +817,28 @@ def get_mid(deck, ts=None):
 
 # Mature cards
 # This set does not overlap with get_new() nor get_mid()
-@lru_cache(maxsize=10)
+@functools.lru_cache(maxsize=10)
 def get_old(deck, ts=None):
     card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl>=21")
     return len(card_ids)
 
 
-@lru_cache
+@functools.lru_cache
 def get_empties(deck):
     card_ids = search_anki('', deck=deck, field='back')
     return card_ids
 
 
-def info_print(*values):
+def hr():
     LINE_WIDTH = os.get_terminal_size().columns
-
     print(COLOR_INFO, end='')
-    print('─' * LINE_WIDTH)
+    print('─' * LINE_WIDTH, end='\n')
     print(COLOR_RESET, end='')
-    if values:
-        print(*values)
-        print()
-
-
-def debug_print(*values):
-    if not options.debug:
-        return
-    info_print(*values)
 
 
 def launch_url(url):
     cmd = f'xdg-open {url} >/dev/null 2>&1 &'
-    info_print(f"Opening: {url}")
+    logging.info(f"Opening: {url}", stacklevel=2)
     os.system(cmd)
 
 
@@ -831,14 +852,14 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     query_term = urllib.parse.quote(term) # For web searches
     url = url + query_term
     clear_line()
+    # TODO factor this out into an on-screen status() func or something (curses?)
     print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
 
     try:
         response = urllib.request.urlopen(url)
         content = response.read().decode('utf-8')
     except (Exception, KeyboardInterrupt) as e:
-        print("\n")
-        info_print(e)
+        logging.info(e)
         return
 
     clear_line()
@@ -853,7 +874,7 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
 
     match = re.search(f"(?s)(<h2.*?{term}.*?)(?=&copy|Bron:|<div|</div)", content)
     if not match:
-        debug_print("No match in HTML document")
+        logging.info("No match in HTML document")
         return
     definition = match.group()
     return definition
@@ -866,6 +887,7 @@ def search_thefreedictionary(term, *, lang):
     query_term = urllib.parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
     clear_line()
+    # TODO factor this out into status() func or something (curses?)
     print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
     try:
         response = urllib.request.urlopen(url)
@@ -875,12 +897,11 @@ def search_thefreedictionary(term, *, lang):
         if response.code == 404:
             content = response.read().decode('utf-8')
             # Parse out spellcheck suggestions via CSS selector: .suggestions a
-            soup = BeautifulSoup(content, 'html.parser')
+            soup = bs4.BeautifulSoup(content, 'html.parser')
             suggestions = [ r.text for r in soup.select('.suggestions a') ]
             return_obj['suggestions'] = sorted(suggestions, key=str.casefold)
     except (Exception, KeyboardInterrupt) as e:
-        print("\n")
-        info_print(e)
+        logging.info(e)
         return
 
     clear_line()
@@ -985,16 +1006,16 @@ def normalize_card(card):
     normalized = normalizer(back, term=front)
 
     if re.findall(r'<|&[A-Za-z]+;', front) :
-        info_print("'Front' field with HTML hinders exact match search.")
+        logging.warning("'Front' field with HTML hinders exact match search.")
 
         # Auto-clean it?
-        if options.debug :
+        if options.update :
             # Rendering removes the HTML, for console printing
             cleaned = normalizer(front).strip()
-            info_print(f'{cleaned=}')
+            logging.info(f'{cleaned=}')
             card_id = card['cardId']
             update_card(card_id, front=cleaned)
-            info_print(f"Updated to:")
+            logging.info(f"Updated to:")
             # Get again from Anki to verify updated card
             return normalize_card(get_card(card_id))
 
@@ -1014,8 +1035,6 @@ def sync():
 
 
 def clear_line():
-    if options.debug:
-        print()
     LINE_WIDTH = os.get_terminal_size().columns
     print('\r' + (' ' * LINE_WIDTH) + '\r', end='', flush=True)
 
@@ -1026,8 +1045,30 @@ def clear_screen():
 
 
 def scroll_screen():
-    if not options.debug:
-        print("\n" * os.get_terminal_size().lines)
+    print("\n" * os.get_terminal_size().lines)
+
+
+def scroll_screen_to_menu(content="", line_pos=None):
+    """The content is the whatever might have already been printed at the top
+
+    Else line_pos is how many lines were already printed since the top
+    """
+
+    # What line number are we at already on the screen (counting top down)
+    if not line_pos:
+        line_pos = 1 + len(re.findall("\n", content))
+
+    # eg screen height is 10, already text like "hey\nthere" printed (so 2 lines, since it'll have a final \n)
+    # Menu will take 2 at the bottom, so, we need 6 more lines printed with end=''
+    OFFSET = 2
+
+    # Remaining newlines to be scrolled down
+    lines_n = os.get_terminal_size().lines - line_pos - OFFSET
+
+    for i in range(lines_n):
+        ...
+        # print(f'{i:2d}')
+    print("\n" * lines_n, end='')
 
 
 def beep():
@@ -1066,11 +1107,11 @@ def main(deck):
     # (Because it's easier to just delete and re-add than to update)
     empty_ids = []
 
-    # Clear/Scroll screen (we scroll here because 'clear' would erase history)
-    if not options.debug:
-        scroll_screen()
-
     while True:
+
+        clear_screen()
+
+        # Testing if the content from the Anki DB differs from the rendered content
         updatable = False
         normalized = ''
 
@@ -1093,36 +1134,38 @@ def main(deck):
             front = (card_ids and card['fields']['Front']['value']) or term or ''
             normalized = renderer(normalized, term, term=front, deck=deck)
 
-        # Clear the top of the screen
-        # But ensure that it lines up, so that PgUp and PgDown on the terminal work one-def-at-a-time
-        # TODO refactor this into scroll_screen
-        if not options.debug:
-            lines_n = os.get_terminal_size().lines - len(re.findall("\n", normalized))
-            # TODO refactor this out into a scroll() def and call it also after changing deck
-            # With default being os.get_terminal_size().lines - 4 (or whatever lines up)
-            # And make the 4 a constant BORDERS_HEIGHT
-            info_print()
-            print("\n" * lines_n)
-
         # If --auto-scroll (ie when using --auto-update), no need to print every definition along the way
         if not options.scroll :
             with autopage.AutoPager() as out:
-                print('\n' + normalized, file=out)
+                print(normalized, file=out)
 
-        if term and not content:
-            info_print("No results: " + term)
+        line_pos = 0
+        if content:
+            line_pos = 1 + len(re.findall("\n", normalized)) # +1 because of default end='\n'
+        elif term:
+            hr()
+            # TODO factor this out into status() func or something (curses?)
+            print("No results: " + term)
+            line_pos = 3
             if wild_n:
-                info_print(f"(W)ilds:" + COLOR_VALUE + str(wild_n) + COLOR_RESET)
+                hr()
+                # TODO factor this out into status() func or something (curses?)
+                print(f"(W)ilds:" + COLOR_VALUE + str(wild_n) + COLOR_RESET)
+                line_pos += 3
 
         if suggestions:
-            info_print("Did you mean: (press TAB for autocomplete)")
-            print("\n".join(suggestions) + "\n")
+            hr()
+            # TODO factor this out into status() func or something (curses?)
+            print("Did you mean: (press TAB for autocomplete)")
+            print("\n".join(suggestions))
+            line_pos += len(suggestions)
 
+        scroll_screen_to_menu(line_pos=line_pos)
+
+        # Print the menu (TODO factor this out)
         # spell-checker:disable
         menu = [ '' ]
 
-        if options.debug:
-            menu += [ COLOR_WARN + "D" + COLOR_RESET]
         if not term:
             menu += [ "        " ]
         else:
@@ -1190,12 +1233,12 @@ def main(deck):
             key = 'n'
 
 
-        info_print()
+        hr()
         while not key:
             clear_line()
             print(menu + '\r', end='', flush=True)
             key = readchar.readkey()
-            debug_print(f'{key=}')
+            logging.debug(f'{key=}')
             # Don't accept space(s),
             # because it might be the user not realizing the pager has ended
             if re.search(r'^\s+$', key) :
@@ -1234,19 +1277,20 @@ def main(deck):
             clear_line()
             exit()
         elif key in ('.') :
-            # Reload (for 'live' editing / debugging)
+            # Reload this script (for latest changes)
             # And show the last modification time of this file
             tl = time.localtime(os.path.getmtime(sys.argv[0]))[0:6]
             ts = "%04d-%02d-%02d %02d:%02d:%02d" % tl
-            info_print(f"{os.getpid()=} mtime={ts} {sys.argv[0]=}")
+            logging.debug(f"{os.getpid()=} mtime={ts} {sys.argv[0]=}")
             os.execv(sys.argv[0], sys.argv)
         elif key == 'd':
             # Switch deck
+            clear_screen()
             decks = get_deck_names()
-            scroll_screen()
-            print(COLOR_COMMAND)
-            print("\n * ".join(['', *decks]))
-            print(COLOR_RESET)
+            print(COLOR_COMMAND, end='')
+            print("\n * ".join(['', *decks]), end='\n\n')
+            print(COLOR_RESET, end='')
+            scroll_screen_to_menu(line_pos=2+len(decks))
 
             deck_prev = options.deck
             # Block autocomplete of dictionary entries
@@ -1283,7 +1327,7 @@ def main(deck):
             wild_n = None
             suggestions = []
             content = None
-            scroll_screen()
+            # scroll_screen()
         elif key in ('y', '*') :
             sync()
             edits_n = 0
@@ -1293,7 +1337,7 @@ def main(deck):
                 del card_ids[card_ids_i]
                 card_ids_i = max(0, card_ids_i - 1)
                 content = None
-                scroll_screen()
+                # scroll_screen()
             else:
                 beep()
         elif key == 'b' and term:
@@ -1347,18 +1391,18 @@ def main(deck):
                 normalized2 = normalizer(normalized, term=front)
                 if normalized != normalized2:
                     # TODO WARN
-                    info_print("Normalizer not idempotent")
+                    logging.warning("Normalizer not idempotent")
 
                 if content_old == normalized :
-                    info_print("Identical to origin (normalized)")
+                    logging.info("Identical to origin (normalized)")
                     continue
 
-                info_print()
+                hr()
                 print(renderer(normalized, front, term=front, deck=deck))
 
                 # print a diff to make it easier to see if any important customizations would be lost
-                info_print()
-                diff_lines = list(Differ().compare(content_old.splitlines(),normalized.splitlines()))
+                hr()
+                diff_lines = list(difflib.Differ().compare(content_old.splitlines(),normalized.splitlines()))
                 for i in range(len(diff_lines)) :
                     diff_lines[i] = re.sub(r'^(\+\s*\S+.*?)$',    GREEN + r'\1' + COLOR_RESET, diff_lines[i])
                     diff_lines[i] = re.sub(r'^(\-\s*\S+.*?)$',      RED + r'\1' + COLOR_RESET, diff_lines[i])
@@ -1461,14 +1505,14 @@ def main(deck):
 
         elif key == 'u' and updatable:
             update_card(card_id, back=content)
-            info_print(f"\t\t\t\t\t\tUpdated {card_id}\t{front}")
+            logging.info(f"\t\t\t\t\t\tUpdated {card_id}\t{front}")
             edits_n += 1
 
         else:
             # Unrecognized command.
+            # TODO add a '?' function that programmatically lists available shortcuts (if they're available in a dict)
             beep()
-            # add a '?' function that programmatically lists available shortcuts (if they're available in a dict)
-
+            # TODO could set a flag here to skip (re-)rendering the next round, since redundant
 
 
 def completer(text: str, state: int) -> str:
@@ -1510,7 +1554,7 @@ def completer(text: str, state: int) -> str:
 
 
 if __name__ == "__main__":
-    parser = OptionParser()
+    parser = optparse.OptionParser()
     parser.add_option('-d', "--debug",       dest='debug',  action='store_true')
     parser.add_option('-s', "--auto-scroll", dest='scroll', action='store_true',
         help="Iterate over all cards when multiple results. Useful in combo with --auto-update"
@@ -1524,6 +1568,14 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
 
     options.debug = options.debug or bool(sys.gettrace())
+
+    log_level = options.debug and logging.DEBUG or logging.WARNING
+    logging.basicConfig(filename=__file__ + '.log',
+                        filemode='w',
+                        level=log_level,
+                        format=f'%(asctime)s %(levelname)-8s %(lineno)4d %(funcName)-20s %(message)s'
+                        )
+    logging.info('\n')
 
     decks = get_deck_names()
     if not options.deck:

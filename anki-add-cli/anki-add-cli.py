@@ -89,8 +89,13 @@ def backlog():
 
 # BUG parsing broken for words that aren't in Woorden, but extracted from 3rd parties, eg encyclo.nl
 #  'stokken', 'tussenin', 'hangertje'
+# And what about 'montage' which isn't from a 3rd party?
 
 # Make the 'o' command open whatever the source URL was (not just woorden.org)
+
+# BUG no NL results from FD (from FreeDictionary)
+# Why does EN work when NL doesn't?
+# If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
 
 # TODO make a class for a Card ?
 # Easiest to just use:
@@ -104,15 +109,43 @@ def backlog():
 # So, we don't have to keep digging into card['fields']...
 # But maybe I need some accessors ... or a constructor to breadown the card['fields']... Or maybe a 'match' statement?
 
+# Logging:
+# Modifying it to send WARNING level messages also to logging.StreamHandler()
+# And INFO also to the StreamHandler when in debug mode
+
+# BUG why does beep() not beep unless in debug mode ?
+
 # TODO Address Pylance issues,
 # eg type hints
 # And then define types for defs
 
-# Logging:
-# Modifying it to send WARNING level messages also to logging.StreamHandler()
-# And INFO also the StreamHandler when in debug mode
-
 # Replace print() statements with a status() call (which can go into a curses window pane later ...)
+
+# TODO
+# Think about how to add multiples webservices for a single deck/lang (?)
+# Like how we switch decks currently?
+# Eg beyond a dictionary, what about extra (web) services for:
+# synonyms, pronunciation, etymology, etc, or just allowing for multiple search providers
+# Maybe just:
+# { lang: en, dict: dictionary.com, syn/thes: somesynservice.com, ipa: some ipa service, etym: etymonline.com, ...}
+# Get IPA from Wiktionary (rather than FreeDictionary)?
+# And maybe later think about how to combine/concat these also to the same anki card ...
+# Is there an API for FD? Doesn't seem like it.
+
+# Use this freeDictionary API, so as to need less regex parsing
+# https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
+
+# Add support for wiktionary? (IPA?) ?
+# eg via ? https://github.com/Suyash458/WiktionaryParser
+
+# Add nl-specific etymology?
+# https://etymologiebank.nl/
+
+# FR: Or use a diff source, eg TV5
+# https://langue-francaise.tv5monde.com/decouvrir/dictionnaire/f/franc
+
+# Add DWDS for better German defs (API?). But get IPA pronunciation elsewhere
+# (eg FreeDictionary or Wiktionary)
 
 # TODO consider switching to curses lib
 # https://docs.python.org/3/howto/curses.html#curses-howto
@@ -128,36 +161,6 @@ def backlog():
 # And maybe also the sync() since it should just be fire-and-forget (but then update empties count)
 # TODO make menu rendering async, or just make all external queries async?
 # Migrate from urrlib to httpx (or aiohttp) to use async
-
-# BUG no NL results from FD (from FreeDictionary)
-# Why does EN work when NL doesn't?
-# If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
-
-# Is there an API for FD? Doesn't seem like it.
-
-# Use freeDictionary API, so as to need less regex parsing
-# https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
-
-# Add support for wiktionary? (IPA?) ?
-# eg via ? https://github.com/Suyash458/WiktionaryParser
-
-# Add nl-specific etymology?
-# https://etymologiebank.nl/
-
-# FR: Or use a diff source, eg TV5
-# https://langue-francaise.tv5monde.com/decouvrir/dictionnaire/f/franc
-
-# Add DWDS for better German defs (API?). But get IPA pronunciation elsewhere
-# (eg FreeDictionary or Wiktionary)
-
-# TODO
-# Think about how to add multiples webservices for a single deck/lang (?)
-# Eg beyond a dictionary, what about extra (web) services for:
-# synonyms, pronunciation, etymology, etc, or just allowing for multiple search providers
-# Maybe just:
-# { lang: en, dict: dictionary.com, syn/thes: somesynservice.com, ipa: some ipa service, etym: etymonline.com, ...}
-# Get IPA from Wiktionary (rather than FreeDictionary)?
-# And maybe later think about how to combine/concat these also to the same anki card ...
 
 # Anki: unify note types (inheritance), not for this code, but in the app.
 # Learn what the purpose of different notes types is, and then make them all use
@@ -202,7 +205,7 @@ def backlog():
 # Maybe copy out some things from render() that should be permanent into it's own def
 # And then update the card (like we did before to remove HTML from 'front')
 
-# See other TODOs below ...
+# See smaller, inline TODOs below ...
 
 ################################################################################
 
@@ -293,6 +296,27 @@ async def ainvoke(action, **params):
         else:
             logging.debug(f"{response['result']=}")
             return response['result']
+
+# From Genie:
+import asyncio
+async def ai_invoke(action, **params):
+    reqJson = json.dumps(request(action, **params)).encode('utf-8')
+    logging.debug(b'invoke() ' + reqJson, stacklevel=2)
+    req = urllib.request.Request('http://localhost:8765', reqJson)
+
+    try:
+        response = await asyncio.get_event_loop().run_in_executor(None, urllib.request.urlopen, req)
+        response = json.load(response)
+        if response['error'] is not None:
+            logging.warning('error: ', response['error'])
+            return None
+        else:
+            return response['result']
+    except (ConnectionRefusedError, urllib.error.URLError) as e:
+        msg = 'Failed to connect to Anki. Make sure that Anki is running, and using the anki-connect add-on.'
+        logging.warning(msg)
+        print(msg)
+        return None
 
 
 def get_deck_names():
@@ -469,7 +493,7 @@ def normalizer(string, *, term=None):
     # Remove hover tip on IPA pronunciation
     string = re.sub(r'(?s)<a class="?help"? .*?>', '', string)
     # Ensure headings begin on their own line (also covers plural forms, eg "Synoniemen")
-    string = re.sub(r'(?m)(?:\n*)(Afbreekpatroon|Uitspraak|Vervoeging|Verbuiging|Synoniem|Antoniem)', r'\n\1', string)
+    string = re.sub(r'(?m)(?<!^)(Afbreekpatroon|Uitspraak|Vervoeging|Verbuiging|Synoniem|Antoniem)', r'\n\1', string)
 
     # NL-specific: Newlines (just one) before example `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
@@ -851,8 +875,9 @@ def search_google(term):
 def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     query_term = urllib.parse.quote(term) # For web searches
     url = url + query_term
-    clear_line()
+    logging.info(url)
     # TODO factor this out into an on-screen status() func or something (curses?)
+    clear_line()
     print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
 
     try:
@@ -872,9 +897,9 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     # &copy:       http://www.woorden.org/woord/zien
     # Bron:        http://www.woorden.org/woord/glashelder
 
-    match = re.search(f"(?s)(<h2.*?{term}.*?)(?=&copy|Bron:|<div|</div)", content)
+    match = re.search(f"(?s)(<h[1-9].*?{term}.*?)(?=&copy|Bron:|<div|</div)", content)
     if not match:
-        logging.info("No match in HTML document")
+        logging.info(term + ": No match in HTML document")
         return
     definition = match.group()
     return definition
@@ -886,9 +911,12 @@ def search_thefreedictionary(term, *, lang):
         return
     query_term = urllib.parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
-    clear_line()
+    logging.info(url)
+
     # TODO factor this out into status() func or something (curses?)
+    clear_line()
     print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
+
     try:
         response = urllib.request.urlopen(url)
         content = response.read().decode('utf-8')
@@ -1077,6 +1105,9 @@ def beep():
 
 def main(deck):
     global options
+
+    # TODO wrap all of this state into an object,
+    # then we can also attrs that trigger clearing of dependent values, etc
 
     # The previous search term
     term = None
@@ -1569,7 +1600,7 @@ if __name__ == "__main__":
 
     options.debug = options.debug or bool(sys.gettrace())
 
-    log_level = options.debug and logging.DEBUG or logging.WARNING
+    log_level = (options.debug and logging.DEBUG) or logging.WARNING
     logging.basicConfig(filename=__file__ + '.log',
                         filemode='w',
                         level=log_level,

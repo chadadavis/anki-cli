@@ -87,10 +87,6 @@ def backlog():
 
 # Backlog/TODO
 
-# BUG parsing broken for words that aren't in Woorden, but extracted from 3rd parties, eg encyclo.nl
-#  'stokken', 'tussenin', 'hangertje'
-# And what about 'montage' which isn't from a 3rd party?
-
 # Make the 'o' command open whatever the source URL was (not just woorden.org)
 
 # BUG no NL results from FD (from FreeDictionary)
@@ -331,7 +327,8 @@ def renderer(string, query=None, *, term=None, deck=None):
 
     # Prepend term in canonical format, for display only
     if term:
-        string = term + "\n\n" + string
+        hr = '─' * len(term)
+        string = '\n'.join(['', term, hr, string])
 
     string = wrapper(string)
     # Ensure one newline at the end
@@ -536,8 +533,8 @@ def normalizer(string, *, term=None):
     string = string + '\n'
 
     if term:
-        # Strip redundant term at start of card
-        string = re.sub(r'^\s*' + term + r'\s*', r'', string)
+        # Strip redundant term at start of card, if it's a whole word, non-prefix
+        string = re.sub(r'^\s*' + term + r'\s+', r'', string)
 
     return string
 
@@ -1015,16 +1012,17 @@ def delete_card(card_id):
     return True
 
 
-def wrapper(string):
+def wrapper(string, indent=' ' * 4):
     LINE_WIDTH = os.get_terminal_size().columns
-    WRAP_WIDTH = int(LINE_WIDTH * .8)
+    # WRAP_WIDTH = int(LINE_WIDTH * .8)
+    WRAP_WIDTH = 80
 
     lines_wrapped = []
     for line in string.splitlines():
         line_wrap = textwrap.wrap(line, WRAP_WIDTH, replace_whitespace=False, drop_whitespace=True)
         line_wrap = line_wrap or ['']
         lines_wrapped += line_wrap
-    string = "\n ".join(lines_wrapped)
+    string = f"\n{indent}".join(lines_wrapped)
     return string
 
 
@@ -1220,7 +1218,8 @@ def main(deck):
 
         menu += [ '|' ]
         menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
-        if edits_n:
+        sync_cta_thresh = 10
+        if edits_n > sync_cta_thresh :
             menu += [ COLOR_WARN + "*" + COLOR_RESET ]
         else:
             menu += [ ' ' ]

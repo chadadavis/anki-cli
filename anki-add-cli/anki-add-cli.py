@@ -87,6 +87,8 @@ def backlog():
 
 # Backlog/TODO
 
+# TODO optparse deprecated, switch to argparse
+
 # Make the 'o' command open whatever the source URL was (not just woorden.org)
 
 # BUG no NL results from FD (from FreeDictionary)
@@ -1216,7 +1218,7 @@ def main(deck):
                         "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:2d}/{len(card_ids):2d}" + COLOR_RESET,
                     ]
 
-        menu += [ '|' ]
+        menu += [ '│' ]
         menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
         sync_cta_thresh = 10
         if edits_n > sync_cta_thresh :
@@ -1236,7 +1238,7 @@ def main(deck):
         if empty_ids := get_empties(deck):
             menu += [ "(E)mpties:" + COLOR_WARN + str(len(empty_ids)) + COLOR_RESET ]
 
-        menu += [ "|", "(S)earch" ]
+        menu += [ "│", "(S)earch" ]
         if term:
             menu += [
                 COLOR_VALUE + term + COLOR_RESET,
@@ -1257,6 +1259,7 @@ def main(deck):
             # Auto-update this card
             key = 'u'
         elif options.scroll and card_ids and card_ids_i < len(card_ids) - 1 :
+            logging.debug(f'{card_ids_i=}/{len(card_ids)=}')
             # Auto-scroll through the resultset to the next card. Since the
             # 'update' is checked first, the current card will be updated, if
             # possible, before proceeding to the next card.

@@ -91,6 +91,10 @@ def backlog():
 
 # Make the 'o' command open whatever the source URL was (not just woorden.org)
 
+# Consider adding a GPT command/prompt to ask adhoc questions about this / other cards ?
+# Could use the embeddings to find synonyms, for example
+# Might have to use stop tokens to limit the response to one line ?
+
 # BUG no NL results from FD (from FreeDictionary)
 # Why does EN work when NL doesn't?
 # If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
@@ -305,11 +309,11 @@ async def ai_invoke(action, **params):
     try:
         response = await asyncio.get_event_loop().run_in_executor(None, urllib.request.urlopen, req)
         response = json.load(response)
-        if response['error'] is not None:
+        if response['error'] is None:
+            return response['result']
+        else:
             logging.warning('error: ', response['error'])
             return None
-        else:
-            return response['result']
     except (ConnectionRefusedError, urllib.error.URLError) as e:
         msg = 'Failed to connect to Anki. Make sure that Anki is running, and using the anki-connect add-on.'
         logging.warning(msg)
@@ -920,13 +924,18 @@ def search_thefreedictionary(term, *, lang):
         response = urllib.request.urlopen(url)
         content = response.read().decode('utf-8')
     except urllib.error.HTTPError as response:
-        # NB urllib raises an exception on 404 pages. The content is in the Error.
-        if response.code == 404:
-            content = response.read().decode('utf-8')
-            # Parse out spellcheck suggestions via CSS selector: .suggestions a
-            soup = bs4.BeautifulSoup(content, 'html.parser')
-            suggestions = [ r.text for r in soup.select('.suggestions a') ]
-            return_obj['suggestions'] = sorted(suggestions, key=str.casefold)
+        # Usually these are server-side errors, throttling, timeouts, etc
+        if response.code != 404:
+            logging.error(response)
+            return
+
+        # NB urllib raises an exception on 404 pages.
+        # The content of the 404 page (eg spellchecker suggestions) is in the Error.
+        content = response.read().decode('utf-8')
+        # Parse out spellcheck suggestions via CSS selector: .suggestions a
+        soup = bs4.BeautifulSoup(content, 'html.parser')
+        suggestions = [ r.text for r in soup.select('.suggestions a') ]
+        return_obj['suggestions'] = sorted(suggestions, key=str.casefold)
     except (Exception, KeyboardInterrupt) as e:
         logging.info(e)
         return
@@ -1282,11 +1291,13 @@ def main(deck):
 
         # / ↑ Search
         # a Add
-        # b Browse/list matching cards in Anki GUI
+        # b Browse/list matching cards in Anki GUI, useful for wildcard searches
         # d Deck
-        # f Fetch / lookup / Definition / Query
+        # e Edit current card_id
         # g Google
+        # m Empties, dequeue the next one, if any
         # n Next
+        # o Open web browser to dictionary page for term
         # p Prev / Shift-n, or up key ↑
         # r Replace
         # s Search, or '/' key
@@ -1379,9 +1390,13 @@ def main(deck):
             if len(card_ids) > 1:
                 # Wildcard search fronts and backs
                 search_anki(term, deck=deck, field=None, browse=True, term=card and card['fields']['Front']['value'])
-            else:
+            elif card_id:
                 # Search 'front' for this one card
-                search_anki(term, deck=deck, field='front', browse=True)
+                # search_anki(term, deck=deck, field='front', browse=True)
+                # Or just edit this one card_id then:
+                invoke('guiEditNote', note=card_to_note(card_id))
+        elif key == 'e' and card_id:
+            invoke('guiEditNote', note=card_to_note(card_id))
         elif key == 'w' and wild_n:
             # wildcard search all fields (front, back, etc)
             card_ids = search_anki(term, deck=deck, field=None)
@@ -1468,7 +1483,7 @@ def main(deck):
             # And search it to verify
             card_ids = search_anki(term, deck=deck)
             card_ids_i = 0
-        elif key == 'e' and empty_ids:
+        elif key == 'm' and empty_ids:
             card_id = empty_ids[0]
             term = get_card(card_id)['fields']['Front']['value']
             delete_card(card_id)

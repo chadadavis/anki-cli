@@ -770,7 +770,7 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
             # Note, only necessary if using 'field', since it's default otherwise
             search_terms = map(lambda x: f'*{x}*', search_terms)
 
-        search_terms = map(lambda x: field + ':' + x, search_terms)
+        search_terms = map(lambda x: f'"{field}:{x}"', search_terms)
 
         # Regex search of declinations:
         # This doesn't really work, since the text in the 'back' field isn't consistent.
@@ -794,7 +794,7 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
         # the browse UI will only show this one card, but if I want to see the
         # rest of the cards, then I can just delete this final term from the
         # query field in the UI.
-        card_ids = invoke('guiBrowse', query=search_query + ' ' + term)
+        card_ids = invoke('guiBrowse', query=search_query + ' ' + f'"{term}"')
     else:
         card_ids = invoke('findCards', query=search_query)
         card_ids = card_ids or []
@@ -1220,6 +1220,8 @@ def main(deck):
                 else:
                     menu += [ COLOR_OK + "✓" + COLOR_RESET]
                     menu += [ "Dele(t)e " ]
+
+                menu += [ "(E)dit" ]
                 menu += [ "(R)eplace" ]
                 if len(card_ids) > 1:
                     # Display in 1-based counting
@@ -1245,7 +1247,7 @@ def main(deck):
         #     menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
 
         if empty_ids := get_empties(deck):
-            menu += [ "(E)mpties:" + COLOR_WARN + str(len(empty_ids)) + COLOR_RESET ]
+            menu += [ "E(m)pties:" + COLOR_WARN + str(len(empty_ids)) + COLOR_RESET ]
 
         menu += [ "│", "(S)earch" ]
         if term:
@@ -1387,14 +1389,8 @@ def main(deck):
         elif key == 'b' and term:
             # Open Anki GUI Card browser/list,
             # for the sake of editing/custom searches
-            if len(card_ids) > 1:
-                # Wildcard search fronts and backs
-                search_anki(term, deck=deck, field=None, browse=True, term=card and card['fields']['Front']['value'])
-            elif card_id:
-                # Search 'front' for this one card
-                # search_anki(term, deck=deck, field='front', browse=True)
-                # Or just edit this one card_id then:
-                invoke('guiEditNote', note=card_to_note(card_id))
+            # If there's a term, also append it, so that it'll (likely) be the first result
+            search_anki(term, deck=deck, field='front', browse=True, term=card and card['fields']['Front']['value'])
         elif key == 'e' and card_id:
             invoke('guiEditNote', note=card_to_note(card_id))
         elif key == 'w' and wild_n:

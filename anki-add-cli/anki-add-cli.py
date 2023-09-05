@@ -261,13 +261,14 @@ def request(action, **params):
 
 def invoke(action, **params):
     reqJson = json.dumps(request(action, **params)).encode('utf-8')
-    logging.debug(b'invoke() ' + reqJson, stacklevel=2)
+    logging.debug(b'invoke:' + reqJson, stacklevel=2)
     req = urllib.request.Request('http://localhost:8765', reqJson)
 
     try:
         response = json.load(urllib.request.urlopen(req))
+        logging.debug('response:\n' + str(response), stacklevel=2)
         if response['error'] is not None:
-            logging.warning('error: ', response['error'])
+            logging.warning('error:\n' + str(response), stacklevel=2)
             return None
         else:
             return response['result']
@@ -856,6 +857,12 @@ def get_empties(deck):
     return card_ids
 
 
+def is_due(card_id):
+    r = invoke('areDue', cards=[card_id])
+    if r:
+        return r[0]
+
+
 def hr():
     LINE_WIDTH = os.get_terminal_size().columns
     print(COLOR_INFO, end='')
@@ -981,6 +988,11 @@ def add_card(term, definition=None, *, deck):
         # NB, this card_id won't exist if the user aborts the dialog.
         # But, that's also handled by delete_card() if it should be called.
         note_id = invoke('guiAddCards', note=note)
+
+
+def answer_card(card_id, ease: int):
+    """Review this card and set ease. 1: Again/New, 2: Hard, 3: Good, 4: Easy """
+    invoke('answerCards', answers=[{'cardId': card_id, 'ease': ease}])
 
 
 def update_card(card_id, *, front=None, back=None):
@@ -1228,6 +1240,12 @@ def main(deck):
                     menu += [
                         "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:2d}/{len(card_ids):2d}" + COLOR_RESET,
                     ]
+                if is_due(card_id):
+                    menu += [ COLOR_WARN + '?' + COLOR_RESET]
+                else:
+                    menu += [ " " ]
+                if options.debug:
+                    menu += [ f"{card['interval']:5d} d" ]
 
         menu += [ '│' ]
         menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
@@ -1454,7 +1472,7 @@ def main(deck):
                 print(*diff_lines, sep='\n')
 
                 try:
-                    prompt = "\nReplace " + COLOR_COMMAND + front + COLOR_RESET + " with this definition? N/y: "
+                    prompt = "\nReplace " + COLOR_COMMAND + front + COLOR_RESET + " with this definition? [N]/y: "
                     reply = input(prompt)
                 except:
                     reply = None
@@ -1479,6 +1497,8 @@ def main(deck):
             # And search it to verify
             card_ids = search_anki(term, deck=deck)
             card_ids_i = 0
+        elif key in ('1','2','3','4') and card_id:
+            answer_card(card_id, int(key))
         elif key == 'm' and empty_ids:
             card_id = empty_ids[0]
             term = get_card(card_id)['fields']['Front']['value']

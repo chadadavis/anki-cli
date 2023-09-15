@@ -1241,11 +1241,10 @@ def main(deck):
                         "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:2d}/{len(card_ids):2d}" + COLOR_RESET,
                     ]
                 if is_due(card_id):
-                    menu += [ COLOR_WARN + '?' + COLOR_RESET]
-                else:
-                    menu += [ " " ]
-                if options.debug:
+                    menu += [ '(1-4) ' + COLOR_WARN + '?' + COLOR_RESET]
                     menu += [ f"{card['interval']:5d} d" ]
+                else:
+                    menu += [ "             " ]
 
         menu += [ '│' ]
         menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
@@ -1347,6 +1346,17 @@ def main(deck):
             ts = "%04d-%02d-%02d %02d:%02d:%02d" % tl
             logging.debug(f"{os.getpid()=} mtime={ts} {sys.argv[0]=}")
             os.execv(sys.argv[0], sys.argv)
+        elif key == 'l':
+            # Clear screen/card/search
+            clear_screen()
+            term = None
+            card_id = None
+            card_ids = []
+            card_ids_i = 0
+            wild_n = None
+            suggestions = []
+            content = None
+            # scroll_screen()
         elif key == 'd':
             # Switch deck
             clear_screen()

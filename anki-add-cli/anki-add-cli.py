@@ -51,6 +51,7 @@ import functools
 import html
 import json
 import logging
+import math
 import optparse
 import os
 import readline
@@ -1232,19 +1233,15 @@ def main(deck):
                 else:
                     menu += [ COLOR_OK + "✓" + COLOR_RESET]
                     menu += [ "Dele(t)e " ]
-
                 menu += [ "(E)dit" ]
                 menu += [ "(R)eplace" ]
-                if len(card_ids) > 1:
-                    # Display in 1-based counting
-                    menu += [
-                        "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:2d}/{len(card_ids):2d}" + COLOR_RESET,
-                    ]
+
                 if is_due(card_id):
                     menu += [ '(1-4) ' + COLOR_WARN + '?' + COLOR_RESET]
-                    menu += [ f"{card['interval']:5d} d" ]
+                    # menu += [ f"{card['interval']:5d} d" ]
                 else:
-                    menu += [ "             " ]
+                    # menu += [ "             " ]
+                    menu += [ "     " ]
 
         menu += [ '│' ]
         menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
@@ -1266,11 +1263,23 @@ def main(deck):
         if empty_ids := get_empties(deck):
             menu += [ "E(m)pties:" + COLOR_WARN + str(len(empty_ids)) + COLOR_RESET ]
 
-        menu += [ "│", "(S)earch" ]
+        menu += [ '│' ]
+
+        if len(card_ids) > 1:
+            card_ids_n = len(card_ids)
+            # Variable-width display, based on how many cards found
+            digits = 1+int(math.log10(card_ids_n))
+            menu += [
+                # Display index in 1-based counting
+                "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:{digits}d}/{card_ids_n}" + COLOR_RESET,
+            ]
+
         if term:
             menu += [
+                "(B)rowse",
+                "(S)earch",
                 COLOR_VALUE + term + COLOR_RESET,
-                "(G)oogle", "(B)rowse",
+                # "(G)oogle",
             ]
 
             if wild_n:
@@ -1543,6 +1552,7 @@ def main(deck):
                 continue
             term = term.strip()
             if not term:
+                card_ids = []
                 continue
 
             # Allow to switch deck and search in one step, via a namespace-like search.

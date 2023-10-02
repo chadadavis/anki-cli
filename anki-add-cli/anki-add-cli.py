@@ -89,8 +89,11 @@ def backlog():
 # Backlog/TODO
 
 # Add a Re(v)iew mode/search, bound to '/' , which just searches/fetches the due cards, using get_due()
-# Sorted?
 # Then I can just use the normal N/P to iterate over them.
+
+# Make 'e' use an internal editor?
+# Because the Anki editor doesn't show raw (HTML code) by default
+# Eg shell out to eg emacs-nox on a temp file, then call update_card()
 
 # TODO optparse deprecated, switch to argparse
 
@@ -334,7 +337,7 @@ def get_deck_names():
     return names
 
 
-def renderer(string, query='', *, term=None, deck=None):
+def renderer(string, query='', *, term='', deck=None):
     """For displaying (already normalized) definition entries on the terminal/console/CLI"""
 
     # Prepend term in canonical format, for display only
@@ -551,7 +554,7 @@ def normalizer(string, *, term=None):
     return string
 
 
-def highlighter(string, query, *, term=None, deck=None):
+def highlighter(string, query, *, term='', deck=None):
 
     # Map wildcard search chars to regex syntax
     query = re.sub(r'[.]', r'\.', query)
@@ -811,7 +814,7 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
 @functools.lru_cache(maxsize=10)
 def get_new(deck, ts=None):
     card_ids = invoke('findCards', query=f"deck:{deck} is:new")
-    return len(card_ids)
+    return card_ids
 
 
 # Cards due before 0 days from now.
@@ -822,8 +825,9 @@ def get_new(deck, ts=None):
 # TODO this wrongly returns epoch_review == 0 for hierarchical decks (eg "Python")
 # TODO does this need to match the Anki setting "Next day begins N hours *after* midnight" ?
 @functools.lru_cache(maxsize=10)
-def get_due(deck, ts=None):
+def get_unreviewed(deck, ts=None):
     card_ids = []
+
     review_id = invoke('getLatestReviewID', deck=deck)
     # Truncate milliseconds off the timestamp (which is the review ID)
     epoch_review = int(review_id/1000)
@@ -836,8 +840,13 @@ def get_due(deck, ts=None):
 
     logging.debug(f"if {epoch_review=} < {epoch_midnight=} : ...")
     if epoch_review < epoch_midnight :
-        card_ids = invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
-    return len(card_ids)
+        card_ids = get_due(deck)
+    return card_ids
+
+
+def get_due(deck, ts=None):
+    # Return all due cards, even if there was already a review today
+    return invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
 
 
 # Immature cards, short interval
@@ -845,7 +854,7 @@ def get_due(deck, ts=None):
 @functools.lru_cache(maxsize=10)
 def get_mid(deck, ts=None):
     card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl<21")
-    return len(card_ids)
+    return card_ids
 
 
 # Mature cards
@@ -853,7 +862,7 @@ def get_mid(deck, ts=None):
 @functools.lru_cache(maxsize=10)
 def get_old(deck, ts=None):
     card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl>=21")
-    return len(card_ids)
+    return card_ids
 
 
 @functools.lru_cache
@@ -1140,7 +1149,7 @@ def main(deck):
     # then we can also attrs that trigger clearing of dependent values, etc
 
     # The previous search term
-    term = None
+    term = ''
 
     # The locally found card(s)
     card_ids = []
@@ -1234,29 +1243,30 @@ def main(deck):
         # spell-checker:disable
         menu = [ '' ]
 
-        if not term:
-            menu += [ "        " ]
-        else:
-            if not card_id:
+        if not card_id:
+            if term:
                 menu += [ COLOR_WARN + "+" + COLOR_RESET ]
                 menu += [ "(A)dd    " ]
                 menu += [ "(F)etch  " ]
             else:
-                if updatable:
-                    menu += [ COLOR_WARN + "⬆" + COLOR_RESET]
-                    menu += [ "(U)pdate " ]
-                else:
-                    menu += [ COLOR_OK + "✓" + COLOR_RESET]
-                    menu += [ "Dele(t)e " ]
-                menu += [ "(E)dit" ]
-                menu += [ "(R)eplace" ]
+                menu += [ "        " ]
+        if card_id:
+            if updatable:
+                menu += [ COLOR_WARN + "⬆" + COLOR_RESET]
+                menu += [ "(U)pdate " ]
+            else:
+                menu += [ COLOR_OK + "✓" + COLOR_RESET]
+                menu += [ "Dele(t)e " ]
 
-                if is_due(card_id):
-                    menu += [ '(1-4) ' + COLOR_WARN + '?' + COLOR_RESET]
-                    # menu += [ f"{card['interval']:5d} d" ]
-                else:
-                    # menu += [ "             " ]
-                    menu += [ "     " ]
+            menu += [ "(E)dit" ]
+            menu += [ "(R)eplace" ]
+
+            if is_due(card_id):
+                menu += [ '(1-4) ' + COLOR_WARN + '?' + COLOR_RESET]
+                # menu += [ f"{card['interval']:5d} d" ]
+            else:
+                # menu += [ "             " ]
+                menu += [ "     " ]
 
         menu += [ '│' ]
         menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
@@ -1266,13 +1276,13 @@ def main(deck):
         else:
             menu += [ ' ' ]
 
-        if n_old := get_old(deck, ts=time.time()//3600) :
+        if n_old := len(get_old(deck, ts=time.time()//3600)) :
             menu += [ "mature:" + COLOR_VALUE + str(n_old) + COLOR_RESET ]
-        # if n_mid := get_mid(deck, ts=time.time()//3600) :
+        # if n_mid := len(get_mid(deck, ts=time.time()//3600)) :
         #     menu += [ "young:"  + COLOR_VALUE + str(n_mid) + COLOR_RESET ]
-        if n_due := get_due(deck, ts=time.time()//3600) :
-            menu += [ "due:"    + COLOR_VALUE + str(n_due) + COLOR_RESET ]
-        # if n_new := get_new(deck, ts=time.time()//3600) :
+        if n_due := len(get_unreviewed(deck, ts=time.time()//3600)) :
+            menu += [ "Re(v)iew:"    + COLOR_VALUE + str(n_due) + COLOR_RESET ]
+        # if n_new := len(get_new(deck, ts=time.time()//3600)) :
         #     menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
 
         if empty_ids := get_empties(deck):
@@ -1328,13 +1338,15 @@ def main(deck):
             if re.search(r'^\s+$', key) :
                 key = None
 
+        clear_line()
+
         # TODO smarter way to clear relevant state vars ?
         # What's the state machine/diagram behind all these?
 
         # TODO refactor the below into a dispatch table
         # Does this really add much value to use 'match'
         # Better to first just refactor big blocks into functions ...
-
+        # Eg:
         # match key:
         #     case 'n' if card_ids_i < len(card_ids) - 1:
         #         card_ids_i += 1
@@ -1354,7 +1366,7 @@ def main(deck):
         elif key == 'l':
             # Clear screen/card/search
             clear_screen()
-            term = None
+            term = ''
             card_id = None
             card_ids = []
             card_ids_i = 0
@@ -1399,7 +1411,7 @@ def main(deck):
             # This is so that `completer()` can know what lang/deck we're using
             options.deck = deck
 
-            term = None
+            term = ''
             card_id = None
             card_ids = []
             card_ids_i = 0
@@ -1447,7 +1459,7 @@ def main(deck):
                 card_ids = []
             # If any, suggestions/content printed on next iteration.
 
-        elif key == 'r' and term:
+        elif key == 'r' and card:
             # Replace old content (check remote dictionary service first).
             content_old = content
             # Get the 'front' value of the last displayed card,
@@ -1514,6 +1526,9 @@ def main(deck):
             card_ids_i = 0
         elif key in ('1','2','3','4') and card_id and is_due(card_id):
             answer_card(card_id, int(key))
+            # Auto-advance
+            if card_ids_i < len(card_ids) - 1:
+                card_ids_i += 1
         elif key == 'm' and empty_ids:
             card_id = empty_ids[0]
             term = get_card(card_id)['fields']['Front']['value']
@@ -1533,8 +1548,10 @@ def main(deck):
             content = obj and obj.get('definition')
             suggestions = obj and obj.get('suggestions') or []
             # If any, suggestions/content printed on next iteration.
-
-        elif key in ('s', '/', Key.CTRL_P, Key.UP):
+        elif key in ('/', 'v'):
+            card_ids = get_due(deck)
+            card_ids_i = 0
+        elif key in ('s', Key.CTRL_P, Key.UP):
             # Exact match search
 
             content = None

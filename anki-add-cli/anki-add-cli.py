@@ -88,6 +88,10 @@ def backlog():
 
 # Backlog/TODO
 
+# Add a Re(v)iew mode/search, bound to '/' , which just searches/fetches the due cards, using get_due()
+# Sorted?
+# Then I can just use the normal N/P to iterate over them.
+
 # TODO optparse deprecated, switch to argparse
 
 # Make the 'o' command open whatever the source URL was (not just woorden.org)
@@ -330,7 +334,7 @@ def get_deck_names():
     return names
 
 
-def renderer(string, query=None, *, term=None, deck=None):
+def renderer(string, query='', *, term=None, deck=None):
     """For displaying (already normalized) definition entries on the terminal/console/CLI"""
 
     # Prepend term in canonical format, for display only
@@ -811,7 +815,7 @@ def get_new(deck, ts=None):
 
 
 # Cards due before 0 days from now.
-# Only if no reviews were done since midnight (else user has already reviewed deck today)
+# But, only if no reviews have yet been done today
 # This is to stimulate doing a review today, if it has any cards that can be reviewed.
 # This set does not overlap with get_new()
 # This set does overlap with get_mid() or get_old()
@@ -856,7 +860,6 @@ def get_old(deck, ts=None):
 def get_empties(deck):
     card_ids = search_anki('', deck=deck, field='back')
     return card_ids
-
 
 def is_due(card_id):
     r = invoke('areDue', cards=[card_id])
@@ -1037,6 +1040,8 @@ def delete_card(card_id):
 
 
 def wrapper(string, indent=' ' * 4):
+    '''Wrap the lines of string with a number of spaces, default 4
+    '''
     LINE_WIDTH = os.get_terminal_size().columns
     # WRAP_WIDTH = int(LINE_WIDTH * .8)
     WRAP_WIDTH = 80
@@ -1047,7 +1052,8 @@ def wrapper(string, indent=' ' * 4):
         line_wrap = line_wrap or ['']
         lines_wrapped += line_wrap
     string = f"\n{indent}".join(lines_wrapped)
-    return string
+    # And indent the first line:
+    return indent + string
 
 
 def normalize_card(card):
@@ -1090,11 +1096,13 @@ def clear_line():
 
 
 def clear_screen():
+    """Wipes out the terminal buffer"""
     if not options.debug:
         print('\033c')
 
 
 def scroll_screen():
+    """Scrolls previous content off the visible screen, retaining scroll buffer."""
     print("\n" * os.get_terminal_size().lines)
 
 
@@ -1187,6 +1195,13 @@ def main(deck):
             front = (card_ids and card['fields']['Front']['value']) or term or ''
             normalized = renderer(normalized, term, term=front, deck=deck)
 
+            # If this card is due, prompt to review, don't reveal the content just yet
+            if not options.scroll and card_id and is_due(card_id):
+                print(renderer('', term=front))
+                print(wrapper(COLOR_INFO + 'Review?\n' + COLOR_COMMAND + '[Press any key]' + COLOR_RESET))
+                scroll_screen_to_menu(line_pos=5)
+                key = readchar.readkey()
+
         # If --auto-scroll (ie when using --auto-update), no need to print every definition along the way
         if not options.scroll :
             with autopage.AutoPager() as out:
@@ -1253,8 +1268,8 @@ def main(deck):
 
         if n_old := get_old(deck, ts=time.time()//3600) :
             menu += [ "mature:" + COLOR_VALUE + str(n_old) + COLOR_RESET ]
-        if n_mid := get_mid(deck, ts=time.time()//3600) :
-            menu += [ "young:"  + COLOR_VALUE + str(n_mid) + COLOR_RESET ]
+        # if n_mid := get_mid(deck, ts=time.time()//3600) :
+        #     menu += [ "young:"  + COLOR_VALUE + str(n_mid) + COLOR_RESET ]
         if n_due := get_due(deck, ts=time.time()//3600) :
             menu += [ "due:"    + COLOR_VALUE + str(n_due) + COLOR_RESET ]
         # if n_new := get_new(deck, ts=time.time()//3600) :
@@ -1302,7 +1317,6 @@ def main(deck):
             # possible, before proceeding to the next card.
             key = 'n'
 
-
         hr()
         while not key:
             clear_line()
@@ -1316,24 +1330,6 @@ def main(deck):
 
         # TODO smarter way to clear relevant state vars ?
         # What's the state machine/diagram behind all these?
-
-        # / ↑ Search
-        # a Add
-        # b Browse/list matching cards in Anki GUI, useful for wildcard searches
-        # d Deck
-        # e Edit current card_id
-        # g Google
-        # m Empties, dequeue the next one, if any
-        # n Next
-        # o Open web browser to dictionary page for term
-        # p Prev / Shift-n, or up key ↑
-        # r Replace
-        # s Search, or '/' key
-        # t Delete
-        # u Update
-        # w Wildcard matches (in front or back fields)
-        # y Sync
-        # * Sync
 
         # TODO refactor the below into a dispatch table
         # Does this really add much value to use 'match'
@@ -1516,7 +1512,7 @@ def main(deck):
             # And search it to verify
             card_ids = search_anki(term, deck=deck)
             card_ids_i = 0
-        elif key in ('1','2','3','4') and card_id:
+        elif key in ('1','2','3','4') and card_id and is_due(card_id):
             answer_card(card_id, int(key))
         elif key == 'm' and empty_ids:
             card_id = empty_ids[0]

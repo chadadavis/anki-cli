@@ -817,13 +817,11 @@ def get_new(deck, ts=None):
     return card_ids
 
 
-# Cards due before 0 days from now.
-# But, only if no reviews have yet been done today
+# If there hasn't been a review today (since midnight), show the count of cards due (before today)
 # This is to stimulate doing a review today, if it has any cards that can be reviewed.
 # This set does not overlap with get_new()
 # This set does overlap with get_mid() or get_old()
 # TODO this wrongly returns epoch_review == 0 for hierarchical decks (eg "Python")
-# TODO does this need to match the Anki setting "Next day begins N hours *after* midnight" ?
 @functools.lru_cache(maxsize=10)
 def get_unreviewed(deck, ts=None):
     card_ids = []
@@ -845,8 +843,8 @@ def get_unreviewed(deck, ts=None):
 
 
 def get_due(deck, ts=None):
-    # Return all due cards, even if there was already a review today
-    return invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
+    # Return all cards due (before today), even if there was already a review today
+    return invoke('findCards', query=f"deck:{deck} (prop:due<0)")
 
 
 # Immature cards, short interval
@@ -870,7 +868,10 @@ def get_empties(deck):
     card_ids = search_anki('', deck=deck, field='back')
     return card_ids
 
+
 def is_due(card_id):
+    """Card is ready to review (either due, or new)
+    """
     r = invoke('areDue', cards=[card_id])
     if r:
         return r[0]

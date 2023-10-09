@@ -55,7 +55,9 @@ import math
 import optparse
 import os
 import readline
+import subprocess
 import sys
+import tempfile
 import textwrap
 import time
 import urllib
@@ -88,9 +90,6 @@ def backlog():
 
 # Backlog/TODO
 
-# Add a Re(v)iew mode/search, bound to '/' , which just searches/fetches the due cards, using get_due()
-# Then I can just use the normal N/P to iterate over them.
-
 # Make 'e' use an internal editor?
 # Because the Anki editor doesn't show raw (HTML code) by default
 # Eg shell out to eg emacs-nox on a temp file, then call update_card()
@@ -106,6 +105,10 @@ def backlog():
 # BUG no NL results from FD (from FreeDictionary)
 # Why does EN work when NL doesn't?
 # If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
+
+# AnkiConnect deprecate deprecated functions, eg:
+# addons21/AnkiConnect/__init__.py:520:allNames is deprecated: please use 'all_names'
+# See the log, eg when starting anki from the CLI
 
 # TODO make a class for a Card ?
 # Easiest to just use:
@@ -1024,6 +1027,21 @@ def update_card(card_id, *, front=None, back=None):
         raise Exception(response['error'])
 
 
+def edit_card(card_id):
+    card = get_card(card_id)
+    content_a = normalize_card(card)
+    with tempfile.NamedTemporaryFile(mode='w+t', suffix=".tmp", delete=False) as tf:
+        tf.write(content_a)
+        temp_file_name = tf.name
+    subprocess.call(os.getenv('EDITOR', 'nano').split() + [temp_file_name])
+    with open(temp_file_name, 'r') as tf:
+        content_b = tf.read()
+    os.unlink(temp_file_name)
+    content_b = normalizer(content_b)
+    if content_a != content_b:
+        update_card(card_id, back=content_b)
+
+
 def card_to_note(card_id):
     # The notes-to-cards relation is 1-to-many.
     # So, each card has exactly 1 parent note.
@@ -1438,7 +1456,10 @@ def main(deck):
             # If there's a term, also append it, so that it'll (likely) be the first result
             search_anki(term, deck=deck, field='front', browse=True, term=card and card['fields']['Front']['value'])
         elif key == 'e' and card_id:
-            invoke('guiEditNote', note=card_to_note(card_id))
+            # invoke('guiEditNote', note=card_to_note(card_id))
+            clear_line()
+            print(f'Editing "{front}" ... ', end='', flush=True)
+            edit_card(card_id)
         elif key == 'w' and wild_n:
             # wildcard search all fields (front, back, etc)
             card_ids = search_anki(term, deck=deck, field=None)

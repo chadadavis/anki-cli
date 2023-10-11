@@ -90,10 +90,6 @@ def backlog():
 
 # Backlog/TODO
 
-# Make 'e' use an internal editor?
-# Because the Anki editor doesn't show raw (HTML code) by default
-# Eg shell out to eg emacs-nox on a temp file, then call update_card()
-
 # TODO optparse deprecated, switch to argparse
 
 # Make the 'o' command open whatever the source URL was (not just woorden.org)

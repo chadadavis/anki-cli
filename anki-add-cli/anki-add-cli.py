@@ -92,8 +92,6 @@ def backlog():
 
 # TODO BUG: any deck name that's not an iso2 code (eg "Python") fails
 
-# Make the 'a' command *not* use the GUI dialog, but $EDITOR (for a word that's not found, without content)
-
 # TODO optparse deprecated, switch to argparse
 
 # Make the 'o' command open whatever the source URL was (not just woorden.org)
@@ -1005,14 +1003,16 @@ def add_card(term, definition=None, *, deck):
         'fields': {'Front': term},
         'options': {'closeAfterAdding': True},
     }
-    if definition:
-        note['fields']['Back'] = definition
-        # NB, duplicate check (deck scope) enabled by default
-        note_id = invoke('addNote', note=note)
-    else:
-        # NB, this card_id won't exist if the user aborts the dialog.
-        # But, that's also handled by delete_card() if it should be called.
-        note_id = invoke('guiAddCards', note=note)
+    # If there's no definition/content, allow user to write/paste some
+    definition = normalizer(definition or editor())
+    note['fields']['Back'] = definition
+    # NB, duplicate check (at deck scope) enabled by default
+    note_id = invoke('addNote', note=note)
+
+    # Alternatively, use the Anki GUI to add a new card
+    #     # NB, this card_id won't exist if the user aborts the dialog.
+    #     # But, that's also handled by delete_card() if it should be called.
+    #     note_id = invoke('guiAddCards', note=note)
 
 
 def answer_card(card_id, ease: int):
@@ -1038,16 +1038,29 @@ def update_card(card_id, *, front=None, back=None):
 def edit_card(card_id):
     card = get_card(card_id)
     content_a = normalize_card(card)
-    with tempfile.NamedTemporaryFile(mode='w+t', suffix=".tmp", delete=False) as tf:
-        tf.write(content_a)
-        temp_file_name = tf.name
-    subprocess.call(os.getenv('EDITOR', 'nano').split() + [temp_file_name])
-    with open(temp_file_name, 'r') as tf:
-        content_b = tf.read()
-    os.unlink(temp_file_name)
+    content_b = editor(content_a)
     content_b = normalizer(content_b)
     if content_a != content_b:
         update_card(card_id, back=content_b)
+
+
+def editor(content_a: str='', /) -> str:
+    """Edit a (multi-line) string, by running your $EDITOR on a temp file
+
+    Note, this does not call normalizer() automatically
+    """
+
+    with tempfile.NamedTemporaryFile(mode='w+t', suffix=".tmp", delete=False) as tf:
+        tf.write(content_a)
+        temp_file_name = tf.name
+
+    # The split() is necessary because $EDITOR might contain multiple words
+    subprocess.call(os.getenv('EDITOR', 'nano').split() + [temp_file_name])
+
+    with open(temp_file_name, 'r') as tf:
+        content_b = tf.read()
+    os.unlink(temp_file_name)
+    return content_b
 
 
 def card_to_note(card_id):
@@ -1260,7 +1273,7 @@ def main(deck):
         if suggestions:
             hr()
             # TODO factor this out into status() func or something (curses?)
-            print("Did you mean: (press TAB for autocomplete)")
+            print("Did you mean:\n")
             print("\n".join(suggestions))
             line_pos += len(suggestions)
 

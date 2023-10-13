@@ -90,6 +90,10 @@ def backlog():
 
 # Backlog/TODO
 
+# TODO BUG: any deck name that's not an iso2 code (eg "Python") fails
+
+# Make the 'a' command *not* use the GUI dialog, but $EDITOR (for a word that's not found, without content)
+
 # TODO optparse deprecated, switch to argparse
 
 # Make the 'o' command open whatever the source URL was (not just woorden.org)
@@ -331,8 +335,8 @@ async def ai_invoke(action, **params):
 
 def get_deck_names():
     names = sorted(invoke('deckNames'))
-    # Filter out sub-decks
-    # names = [ i for i in names if not '::' in i]
+    # Filter out sub-decks ?
+    names = [ i for i in names if i != 'Default' and not '::' in i]
     return names
 
 
@@ -825,8 +829,9 @@ def get_new(deck, ts=None):
 def get_unreviewed(deck, ts=None):
     card_ids = []
 
+    # Anki uses millisecond epochs
     review_id = invoke('getLatestReviewID', deck=deck)
-    # Truncate milliseconds off the timestamp (which is the review ID)
+    # Convert millisecond epoch to second epoch, truncate milliseconds off the timestamp (which is the review ID)
     epoch_review = int(review_id/1000)
 
     # Get the (epoch) time at midnight this morning,
@@ -842,8 +847,15 @@ def get_unreviewed(deck, ts=None):
 
 
 def get_due(deck, ts=None):
-    # Return all cards due (before today), even if there was already a review today
-    return invoke('findCards', query=f"deck:{deck} (prop:due<0)")
+    """"A list of all cards (IDs) due.
+
+    Queries cards due today (=0) or earlier (<0).
+    Ignores whether a review was already done today (cf. get_unreviewed())
+
+    The ts param is just for cache invalidation, not for querying cards due before a certain date/time
+    """
+
+    return invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
 
 
 # Immature cards, short interval
@@ -1291,16 +1303,16 @@ def main(deck):
         else:
             menu += [ ' ' ]
 
-        if n_old := len(get_old(deck, ts=time.time()//3600)) :
+        if n_old := deck and len(get_old(deck, ts=time.time()//3600)) :
             menu += [ "mature:" + COLOR_VALUE + str(n_old) + COLOR_RESET ]
-        # if n_mid := len(get_mid(deck, ts=time.time()//3600)) :
+        # if n_mid := deck and len(get_mid(deck, ts=time.time()//3600)) :
         #     menu += [ "young:"  + COLOR_VALUE + str(n_mid) + COLOR_RESET ]
-        if n_due := len(get_unreviewed(deck, ts=time.time()//3600)) :
+        if n_due := deck and len(get_unreviewed(deck, ts=time.time()//3600)) :
             menu += [ "Re(v)iew:"    + COLOR_VALUE + str(n_due) + COLOR_RESET ]
-        # if n_new := len(get_new(deck, ts=time.time()//3600)) :
+        # if n_new := deck and len(get_new(deck, ts=time.time()//3600)) :
         #     menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
 
-        if empty_ids := get_empties(deck):
+        if empty_ids := deck and get_empties(deck):
             menu += [ "E(m)pties:" + COLOR_WARN + str(len(empty_ids)) + COLOR_RESET ]
 
         menu += [ '│' ]
@@ -1332,7 +1344,9 @@ def main(deck):
         menu = re.sub(r'\)', COLOR_RESET, menu)
 
         key = None
-        if options.update and updatable and content:
+        if not options.deck:
+            key = 'd'
+        elif options.update and updatable and content:
             # Auto-update this card
             key = 'u'
         elif options.scroll and card_ids and card_ids_i < len(card_ids) - 1 :
@@ -1393,10 +1407,11 @@ def main(deck):
             # Switch deck
             clear_screen()
             decks = get_deck_names()
-            print(COLOR_COMMAND, end='')
-            print("\n * ".join(['', *decks]), end='\n\n')
-            print(COLOR_RESET, end='')
-            scroll_screen_to_menu(line_pos=2+len(decks))
+            for dn in decks:
+                due = len(get_due(dn))
+                print(f' * {due:4d} ' + COLOR_COMMAND + dn + COLOR_RESET)
+
+            scroll_screen_to_menu(line_pos=len(decks))
 
             deck_prev = options.deck
             # Block autocomplete of dictionary entries
@@ -1694,8 +1709,8 @@ if __name__ == "__main__":
 
     decks = get_deck_names()
     if not options.deck:
-        # Take the first deck by default; fail if there are none
-        options.deck = decks[0]
+        # This will force the deck selector to open at startup
+        options.deck = ''
 
     readline.set_completer(completer)
     readline.set_completer_delims('')

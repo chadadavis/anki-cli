@@ -818,11 +818,11 @@ def get_new(deck, ts=None):
     return card_ids
 
 
-# If there hasn't been a review today (since midnight), show the count of cards due (before today)
+# If there hasn't been a review today (since midnight), show the count of cards due
 # This is to stimulate doing a review today, if it has any cards that can be reviewed.
 # This set does not overlap with get_new()
 # This set does overlap with get_mid() or get_old()
-# TODO this wrongly returns epoch_review == 0 for hierarchical decks (eg "Python")
+# TODO this seems to wrongly return epoch_review == 0 for hierarchical decks (eg "Python")
 @functools.lru_cache(maxsize=10)
 def get_unreviewed(deck, ts=None):
     card_ids = []
@@ -847,13 +847,12 @@ def get_unreviewed(deck, ts=None):
 def get_due(deck, ts=None):
     """"A list of all cards (IDs) due.
 
-    Queries cards due today (=0) or earlier (<0).
     Ignores whether a review was already done today (cf. get_unreviewed())
 
     The ts param is just for cache invalidation, not for querying cards due before a certain date/time
     """
 
-    return invoke('findCards', query=f"deck:{deck} (prop:due<=0)")
+    return invoke('findCards', query=f"deck:{deck} (is:due)")
 
 
 # Immature cards, short interval
@@ -1244,7 +1243,7 @@ def main(deck):
             front = (card_ids and card['fields']['Front']['value']) or term or ''
             normalized = renderer(normalized, term, term=front, deck=deck)
 
-            # If this card is due, prompt to review, don't reveal the content just yet
+            # If this card is due, prompt to review, don't reveal the content until keypress
             if not options.scroll and card_id and is_due(card_id):
                 print(renderer('', term=front))
                 print(wrapper(COLOR_INFO + 'Review?\n' + COLOR_COMMAND + '[Press any key]' + COLOR_RESET))
@@ -1572,6 +1571,9 @@ def main(deck):
             card_ids_i = 0
         elif key in ('1','2','3','4') and card_id and is_due(card_id):
             answer_card(card_id, int(key))
+            # Push reviewed cards onto readline history, if it wasn't already the search term
+            if term != front:
+                readline.add_history(front)
             # Auto-advance
             if card_ids_i < len(card_ids) - 1:
                 card_ids_i += 1

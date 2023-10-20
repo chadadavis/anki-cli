@@ -54,6 +54,7 @@ import logging
 import math
 import optparse
 import os
+import pprint
 import readline
 import subprocess
 import sys
@@ -119,6 +120,9 @@ def backlog():
 #     ...
 # So, we don't have to keep digging into card['fields']...
 # But maybe I need some accessors ... or a constructor to breadown the card['fields']... Or maybe a 'match' statement?
+# Make a stringified version of the card, for logging, with just these fields:
+# 'cardId' 'note' 'deckName' 'interval' ['fields']['front']['value']
+# logging.debug(...)
 
 # Logging:
 # Modifying it to send WARNING level messages also to logging.StreamHandler()
@@ -248,6 +252,8 @@ COLOR_VALUE     = GREEN_LT
 COLOR_HIGHLIGHT = YELLOW_BT
 COLOR_RESET     = RESET
 
+pp = pprint.PrettyPrinter(indent=4)
+
 
 class Key(enum.StrEnum):
     # The Esc key is doubled, since it's is a modifier and isn't accepted solo
@@ -275,9 +281,18 @@ def invoke(action, **params):
 
     try:
         response = json.load(urllib.request.urlopen(req))
-        logging.debug('response:\n' + str(response), stacklevel=2)
-        if response['error'] is not None:
-            logging.warning('error:\n' + str(response), stacklevel=2)
+        result_log = response['result']
+
+        # Simplify some debug logging
+        if isinstance(result_log, list) and len(result_log) > 10:
+            result_log = 'len:' + str(len(result_log))
+        if isinstance(result_log, dict) and result_log['fields']:
+            result_log['fields']['Back']['value'] = '...'
+        # logging.debug('result:\n' + pp.pformat(result_log), stacklevel=2)
+        error = response['error']
+        if error is not None:
+            logging.warning('error:\n' + str(error), stacklevel=2)
+            logging.warning('result:\n' + pp.pformat(response['result']), stacklevel=2)
             return None
         else:
             return response['result']
@@ -513,7 +528,8 @@ def normalizer(string, *, term=None):
     string = re.sub(r'(?m)(?:\n*)(`.*?`)', r'\n\1', string)
 
     # One, and only one, newline \n after colon :
-    string = re.sub(r'(?m):(\s+|$)\n*', r':\n', string)
+    # (but only if the colon : is not already inside of a (short) parenthetical)
+    string = re.sub(r'(?m):([\s\n]+)(?![^(]{,20}\))', r':\n', string)
 
     # Remove seperators in plurals (eg in the section: "Verbuigingen")
     string = re.sub(r'\|', '', string)
@@ -814,17 +830,32 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
 # This set does not overlap with get_mid() nor get_old()
 @functools.lru_cache(maxsize=10)
 def get_new(deck, ts=None):
+    """Get the IDs of all new cards (those that have never been reviewed)
+    """
     card_ids = invoke('findCards', query=f"deck:{deck} is:new")
     return card_ids
 
 
-# If there hasn't been a review today (since midnight), show the count of cards due
-# This is to stimulate doing a review today, if it has any cards that can be reviewed.
-# This set does not overlap with get_new()
-# This set does overlap with get_mid() or get_old()
-# TODO this seems to wrongly return epoch_review == 0 for hierarchical decks (eg "Python")
+def is_new(card_id):
+    """Card is new, aka. unseen, never yet reviewed
+
+    """
+
+    card = get_card(card_id)
+    card_ids = get_new(card['deckName'], ts=time.time()//3600)
+    return card_id in card_ids
+
+
 @functools.lru_cache(maxsize=10)
 def get_unreviewed(deck, ts=None):
+    """If there hasn't been a review today (since midnight), show the count of cards due.
+
+    This is to stimulate doing a review today, if it has any cards that can be reviewed.
+    This set does not overlap with get_new()
+
+    TODO this seems to wrongly return epoch_review == 0 for hierarchical decks (eg "Python")
+    """
+
     card_ids = []
 
     # Anki uses millisecond epochs
@@ -840,26 +871,35 @@ def get_unreviewed(deck, ts=None):
 
     logging.debug(f"if {epoch_review=} < {epoch_midnight=} : ...")
     if epoch_review < epoch_midnight :
-        card_ids = get_due(deck)
+        card_ids = get_due(deck, ts=time.time()//3600)
     return card_ids
 
 
+@functools.lru_cache(maxsize=10)
 def get_due(deck, ts=None):
     """"A list of all cards (IDs) due.
 
-    Ignores whether a review was already done today (cf. get_unreviewed())
+    This function ignores whether a review on this deck was already done today (cf. get_unreviewed())
+
+    The cards due (is:due) are made up of two sets: (new cards are not considered due)
+    * learn(ing) cards:  is:due  is:learn
+    * review(ing) cards: is:due -is:learn
 
     The ts param is just for cache invalidation, not for querying cards due before a certain date/time
     """
 
-    return invoke('findCards', query=f"deck:{deck} (is:due)")
+    return invoke('findCards', query=f"deck:{deck} is:due")
+
+
+# Cards that aren't due within this many days are considered 'mature'
+MATURE_INTERVAL = 365
 
 
 # Immature cards, short interval
 # This set does not overlap with get_new() nor get_old()
 @functools.lru_cache(maxsize=10)
 def get_mid(deck, ts=None):
-    card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl<21")
+    card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl<{MATURE_INTERVAL}")
     return card_ids
 
 
@@ -867,7 +907,7 @@ def get_mid(deck, ts=None):
 # This set does not overlap with get_new() nor get_mid()
 @functools.lru_cache(maxsize=10)
 def get_old(deck, ts=None):
-    card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl>=21")
+    card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl>={MATURE_INTERVAL}")
     return card_ids
 
 
@@ -877,12 +917,36 @@ def get_empties(deck):
     return card_ids
 
 
-def is_due(card_id):
-    """Card is ready to review (either due, or new)
+def are_due(card_ids):
+    """Deprecated. Card is ready to review (either due, or new)
+
+    Based on the `areDue` API call, which seems to differ from querying is:due .
+    The `is:due` query seems to return cards due later today, but not due now.
+    The `areDue` seems to hide cards due later today, but not due now.
+
+    The Anki UI seems consistent with `is:due`, and not with `areDue`
     """
-    r = invoke('areDue', cards=[card_id])
+    r = invoke('areDue', cards=card_ids)
     if r:
         return r[0]
+
+
+def is_due(card_id):
+    """Card is ready to review (due)
+
+    Does not include new cards.
+    cf. is_new(card_id)
+
+    Based on the `is:due` query, which seems to differ from the `areDue` API call.
+    The `is:due` query seems to return cards due later today, but not due now.
+    The `areDue` seems to hide cards due later today, but not due now.
+
+    The Anki UI seems consistent with `is:due`, and not with `areDue`
+    """
+
+    card = get_card(card_id)
+    card_ids = get_due(card['deckName'], ts=time.time()//3600)
+    return card_id in card_ids
 
 
 def hr():
@@ -987,6 +1051,7 @@ def search_thefreedictionary(term, *, lang):
     return return_obj
 
 
+@functools.lru_cache(maxsize=100)
 def get_card(id):
     cardsInfo = invoke('cardsInfo', cards=[id])
     card = cardsInfo[0]
@@ -995,6 +1060,7 @@ def get_card(id):
 
 def add_card(term, definition=None, *, deck):
     """Create a new Note. (If you want the card_id, do another search for it)"""
+    get_new.cache_clear()
 
     note = {
         'deckName': deck,
@@ -1015,11 +1081,17 @@ def add_card(term, definition=None, *, deck):
 
 
 def answer_card(card_id, ease: int):
-    """Review this card and set ease. 1: Again/New, 2: Hard, 3: Good, 4: Easy """
+    """Review this card and set ease. 1: Again/New, 2: Hard, 3: Good, 4: Easy
+    """
+    # Note, functools.lru_cache doesn't allow removing single items from the cache
+    get_card.cache_clear()
+    get_new.cache_clear()
+    get_due.cache_clear()
     invoke('answerCards', answers=[{'cardId': card_id, 'ease': ease}])
 
 
 def update_card(card_id, *, front=None, back=None):
+    get_card.cache_clear()
     note_id = card_to_note(card_id)
     note = {
         'id': note_id,
@@ -1244,6 +1316,8 @@ def main(deck):
             normalized = renderer(normalized, term, term=front, deck=deck)
 
             # If this card is due, prompt to review, don't reveal the content until keypress
+            # Ignore new/unseen cards here, because new cards are lower priority than (over-)due reviews.
+            # (But we can still enable the menu item to review new cards below ...)
             if not options.scroll and card_id and is_due(card_id):
                 print(renderer('', term=front))
                 print(wrapper(COLOR_INFO + 'Review?\n' + COLOR_COMMAND + '[Press any key]' + COLOR_RESET))
@@ -1300,7 +1374,7 @@ def main(deck):
             menu += [ "(E)dit" ]
             menu += [ "(R)eplace" ]
 
-            if is_due(card_id):
+            if is_due(card_id) or is_new(card_id):
                 menu += [ '(1-4) ' + COLOR_WARN + '?' + COLOR_RESET]
                 # menu += [ f"{card['interval']:5d} d" ]
             else:
@@ -1420,21 +1494,28 @@ def main(deck):
             clear_screen()
             decks = get_deck_names()
             for dn in decks:
-                due = len(get_due(dn))
-                print(f' * {due:4d} ' + COLOR_COMMAND + dn + COLOR_RESET)
+                due = len(get_due(dn, ts=time.time()//3600))
+                # Draw a histogram to emphasize the count of due cards, as a per mille ‰
+                due_scaled = int( (os.get_terminal_size().columns - 20) * (due / 1000) )
+                print(f' * {COLOR_COMMAND}{dn:10s}{COLOR_RESET} {due:4d} ' + ('─' * due_scaled) )
 
             scroll_screen_to_menu(line_pos=len(decks))
 
             deck_prev = options.deck
-            # Block autocomplete of dictionary entries
+
+            # Block autocomplete of dictionary words while choosing a deck,
+            # since we want to limit it to deck names
             options.deck = None
-            # Push deck names onto readline history stack, for ability to autocomplete
+            # Push deck names onto readline history stack, for ability to autocomplete,
+            # and to be able to Ctrl-P to just scroll up through the list
             hist_len_pre = readline.get_current_history_length()
             for d in decks:
                 readline.add_history(d)
 
             try:
                 selected = input("Switch to deck: ")
+                if not selected:
+                    raise ValueError()
             except:
                 options.deck = deck_prev
                 continue
@@ -1446,11 +1527,11 @@ def main(deck):
                 for i in range(hist_len_post, hist_len_pre, -1):
                     readline.remove_history_item(i-1) # zero-based indexes
 
-            if not selected in decks:
+            if selected not in decks:
                 beep()
                 continue
             deck = selected
-            # This is so that `completer()` can know what lang/deck we're using
+            # This is so that `completer()` can know what lang/deck we're using for future word autocompletions
             options.deck = deck
 
             term = ''
@@ -1569,7 +1650,7 @@ def main(deck):
             # And search it to verify
             card_ids = search_anki(term, deck=deck)
             card_ids_i = 0
-        elif key in ('1','2','3','4') and card_id and is_due(card_id):
+        elif key in ('1','2','3','4') and card_id and (is_due(card_id) or is_new(card_id)):
             answer_card(card_id, int(key))
             # Push reviewed cards onto readline history, if it wasn't already the search term
             if term != front:
@@ -1597,7 +1678,8 @@ def main(deck):
             suggestions = obj and obj.get('suggestions') or []
             # If any, suggestions/content printed on next iteration.
         elif key in ('/', 'v'):
-            card_ids = get_due(deck)
+            term = ''
+            card_ids = get_due(deck, ts=time.time()//3600)
             card_ids_i = 0
         elif key in ('s', Key.CTRL_P, Key.UP):
             # Exact match search
@@ -1621,7 +1703,7 @@ def main(deck):
             # e.g. 'nl:zien' would switch deck to 'nl' first, and then search for 'zien'.
             # Also allow separators [;/:] to obviate pressing Shift
             decks_re = '|'.join(decks := get_deck_names())
-            if match := re.match('\s*([a-z]{2})\s*[:;/]\s*(.*)', term):
+            if match := re.match('\s*([a-z]{2})\s*[/]\s*(.*)', term):
                 lang, term = match.groups()
                 if re.match(f'({decks_re})', lang):
                     deck = lang

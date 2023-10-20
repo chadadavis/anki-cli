@@ -283,12 +283,14 @@ def invoke(action, **params):
         response = json.load(urllib.request.urlopen(req))
         result_log = response['result']
 
-        # Simplify some debug logging
-        if isinstance(result_log, list) and len(result_log) > 10:
-            result_log = 'len:' + str(len(result_log))
-        if isinstance(result_log, dict) and result_log['fields']:
-            result_log['fields']['Back']['value'] = '...'
-        # logging.debug('result:\n' + pp.pformat(result_log), stacklevel=2)
+        if options.debug:
+            # Simplify some debug logging
+            if isinstance(result_log, list) and len(result_log) > 10:
+                result_log = 'len:' + str(len(result_log))
+            if isinstance(result_log, dict) and result_log['fields']:
+                result_log['fields']['Back']['value'] = '...'
+            logging.debug('result:\n' + pp.pformat(result_log), stacklevel=2)
+
         error = response['error']
         if error is not None:
             logging.warning('error:\n' + str(error), stacklevel=2)
@@ -560,13 +562,14 @@ def normalizer(string, *, term=None):
     # Delete leading space on the entry as a whole
     string = re.sub(r'^\s+', '', string)
 
-    # Canonical final newline
-    string = re.sub(r'\s*$', '', string)
-    string = string + '\n'
-
+    # Strip redundant term at start of card, if it's a whole word, non-prefix
     if term:
-        # Strip redundant term at start of card, if it's a whole word, non-prefix
         string = re.sub(r'^\s*' + term + r'\s+', r'', string)
+
+    # Delete trailing space, and add canonical final newline
+    string = re.sub(r'\s*$', '', string)
+    if string != '':
+        string = string + '\n'
 
     return string
 
@@ -1061,7 +1064,7 @@ def get_card(id):
 def add_card(term, definition=None, *, deck):
     """Create a new Note. (If you want the card_id, do another search for it)"""
     get_new.cache_clear()
-
+    get_empties.cache_clear()
     note = {
         'deckName': deck,
         'modelName': 'Basic-' + deck,
@@ -1069,7 +1072,8 @@ def add_card(term, definition=None, *, deck):
         'options': {'closeAfterAdding': True},
     }
     # If there's no definition/content, allow user to write/paste some
-    definition = normalizer(definition or editor())
+    definition = definition or editor(term + '\n\n')
+    definition = normalizer(definition, term=term)
     note['fields']['Back'] = definition
     # NB, duplicate check (at deck scope) enabled by default
     note_id = invoke('addNote', note=note)
@@ -1092,6 +1096,7 @@ def answer_card(card_id, ease: int):
 
 def update_card(card_id, *, front=None, back=None):
     get_card.cache_clear()
+    get_empties.cache_clear()
     note_id = card_to_note(card_id)
     note = {
         'id': note_id,
@@ -1148,6 +1153,7 @@ def card_to_note(card_id):
 
 
 def delete_card(card_id):
+    get_empties.cache_clear()
     note_id = card_to_note(card_id)
     if not note_id:
         # This happens if the card wasn't saved when first being added.
@@ -1808,6 +1814,8 @@ if __name__ == "__main__":
     if not options.deck:
         # This will force the deck selector to open at startup
         options.deck = ''
+
+    logging.debug('options:\n' + pp.pformat(options))
 
     readline.set_completer(completer)
     readline.set_completer_delims('')

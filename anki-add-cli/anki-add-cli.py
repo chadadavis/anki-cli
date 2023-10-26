@@ -55,6 +55,7 @@ import math
 import optparse
 import os
 import pprint
+import random
 import readline
 import subprocess
 import sys
@@ -434,6 +435,7 @@ def normalizer(string, *, term=None):
         ,'ouderwets'
         ,'politiek'
         ,'religie'
+        ,'scheepvaart'
         ,'slang'
         ,'speelgoed'
         ,'sport'
@@ -830,10 +832,15 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
     return card_ids
 
 
-# This set does not overlap with get_mid() nor get_old()
 @functools.lru_cache(maxsize=10)
 def get_new(deck, ts=None):
     """Get the IDs of all new cards (those that have never been reviewed)
+
+    Note, this also includes the empty cards.
+    cf. get_emtpy(), is_empty()
+
+    This set does not overlap with get_mid() nor get_old()
+
     """
     card_ids = invoke('findCards', query=f"deck:{deck} is:new")
     return card_ids
@@ -915,7 +922,7 @@ def get_old(deck, ts=None):
 
 
 @functools.lru_cache
-def get_empties(deck):
+def get_empty(deck):
     card_ids = search_anki('', deck=deck, field='back')
     return card_ids
 
@@ -950,6 +957,19 @@ def is_due(card_id):
     card = get_card(card_id)
     card_ids = get_due(card['deckName'], ts=time.time()//3600)
     return card_id in card_ids
+
+
+def is_empty(card_id):
+    """Card was enqueued, to be looked up, but hasn't been looked up yet.
+
+    Technically, this is a 'is_new' card as well, but it has no content yet.
+    (It has a 'front' field, but the 'back' field is '')
+
+    cf. is_new(card_id), is_due(card_id)
+    """
+
+    card = get_card(card_id)
+    return not card['fields']['Back']['value']
 
 
 def hr():
@@ -1064,7 +1084,7 @@ def get_card(id):
 def add_card(term, definition=None, *, deck):
     """Create a new Note. (If you want the card_id, do another search for it)"""
     get_new.cache_clear()
-    get_empties.cache_clear()
+    get_empty.cache_clear()
     note = {
         'deckName': deck,
         'modelName': 'Basic-' + deck,
@@ -1096,7 +1116,7 @@ def answer_card(card_id, ease: int):
 
 def update_card(card_id, *, front=None, back=None):
     get_card.cache_clear()
-    get_empties.cache_clear()
+    get_empty.cache_clear()
     note_id = card_to_note(card_id)
     note = {
         'id': note_id,
@@ -1153,7 +1173,7 @@ def card_to_note(card_id):
 
 
 def delete_card(card_id):
-    get_empties.cache_clear()
+    get_empty.cache_clear()
     note_id = card_to_note(card_id)
     if not note_id:
         # This happens if the card wasn't saved when first being added.
@@ -1207,7 +1227,7 @@ def normalize_card(card):
 def sync():
     invoke('sync')
     # And in case we downloaded new empty cards:
-    get_empties.cache_clear()
+    get_empty.cache_clear()
 
     # These will expire in time ... can also just reload the script with key '.'
     # get_new.cache_clear()
@@ -1297,6 +1317,7 @@ def main(deck):
     while True:
 
         clear_screen()
+        key = None
 
         # Testing if the content from the Anki DB differs from the rendered content
         updatable = False
@@ -1325,10 +1346,20 @@ def main(deck):
             # Ignore new/unseen cards here, because new cards are lower priority than (over-)due reviews.
             # (But we can still enable the menu item to review new cards below ...)
             if not options.scroll and card_id and is_due(card_id):
+                # TODO factor this out into eg review_card() or review_term() or something
                 print(renderer('', term=front))
                 print(wrapper(COLOR_INFO + 'Review?\n' + COLOR_COMMAND + '[Press any key]' + COLOR_RESET))
                 scroll_screen_to_menu(line_pos=5)
-                key = readchar.readkey()
+                try:
+                    key = readchar.readkey()
+                except (KeyboardInterrupt) as e:
+                    ...
+                if key in (None, 'n'):
+                    # Skip this card, advance to Next
+                    key = 'n'
+                else:
+                    # Reset, for the readkey loop below
+                    key = None
 
         # If --auto-scroll (ie when using --auto-update), no need to print every definition along the way
         if not options.scroll :
@@ -1404,7 +1435,7 @@ def main(deck):
         # if n_new := deck and len(get_new(deck, ts=time.time()//3600)) :
         #     menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
 
-        if empty_ids := deck and get_empties(deck):
+        if empty_ids := deck and get_empty(deck):
             menu += [ "E(m)pties:" + COLOR_WARN + str(len(empty_ids)) + COLOR_RESET ]
 
         menu += [ '│' ]
@@ -1435,7 +1466,6 @@ def main(deck):
         menu = re.sub(r'\(', COLOR_COMMAND, menu)
         menu = re.sub(r'\)', COLOR_RESET, menu)
 
-        key = None
         if not options.deck:
             key = 'd'
         elif options.update and updatable and content:
@@ -1520,6 +1550,10 @@ def main(deck):
 
             try:
                 selected = input("Switch to deck: ")
+                # Remove any leading slash
+                # cf. the Anki GUI; that's how you start a review from the decks view
+                selected = selected.strip()
+                selected = selected.lstrip('/')
                 if not selected:
                     raise ValueError()
             except:
@@ -1668,8 +1702,8 @@ def main(deck):
             card_id = empty_ids[0]
             term = get_card(card_id)['fields']['Front']['value']
             delete_card(card_id)
-            get_empties.cache_clear()
-            empty_ids = get_empties(deck)
+            get_empty.cache_clear()
+            empty_ids = get_empty(deck)
             card_id = None
             card_ids = []
             wild_n  = None
@@ -1683,9 +1717,18 @@ def main(deck):
             content = obj and obj.get('definition')
             suggestions = obj and obj.get('suggestions') or []
             # If any, suggestions/content printed on next iteration.
+
+            if content:
+                # TODO factor this out into eg review_card() or review_term() or something
+                print(renderer('', term=term))
+                print(wrapper(COLOR_INFO + 'Review?\n' + COLOR_COMMAND + '[Press any key]' + COLOR_RESET))
+                scroll_screen_to_menu(line_pos=5)
+                key = readchar.readkey()
+
         elif key in ('/', 'v'):
             term = ''
             card_ids = get_due(deck, ts=time.time()//3600)
+            random.shuffle(card_ids)
             card_ids_i = 0
         elif key in ('s', Key.CTRL_P, Key.UP):
             # Exact match search

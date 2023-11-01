@@ -94,17 +94,21 @@ def backlog():
 
 # TODO BUG: any deck name that's not an iso2 code (eg "Python") fails
 
+# TODO BUG: I can't review newly created cards on the 'fr' deck (nl,de,en are fine though). Why? Diff settings?
+
 # TODO optparse deprecated, switch to argparse
 
 # Make the 'o' command open whatever the source URL was (not just woorden.org)
 
-# Consider adding a GPT command/prompt to ask adhoc questions about this / other cards ?
-# Could use the embeddings to find synonyms, for example
-# Might have to use stop tokens to limit the response to one line ?
-
 # BUG no NL results from FD (from FreeDictionary)
 # Why does EN work when NL doesn't?
 # If Woorden is often unavailable, make this configurable in the menu (rather than hard-coded)?
+
+# Use this freeDictionary API, so as to need less regex parsing
+# https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
+
+# Add support for wiktionary? (IPA?) ?
+# eg via ? https://github.com/Suyash458/WiktionaryParser
 
 # AnkiConnect deprecate deprecated functions, eg:
 # addons21/AnkiConnect/__init__.py:520:allNames is deprecated: please use 'all_names'
@@ -135,7 +139,13 @@ def backlog():
 # eg type hints
 # And then define types for defs
 
-# Replace print() statements with a status() call (which can go into a curses window pane later ...)
+# Consider adding a GPT command/prompt to ask adhoc questions about this / other cards ?
+# Could use the embeddings to find synonyms, for example
+# Might have to use stop tokens to limit the response to one line ?
+# Or rather than customize it for one service, make a command (!) to pipe to a shell command
+# Doesn't vim also have something like that?
+# And save the last command in readline (or read from bash history?)
+# Then use the chatgpt.py script to receive content piped in, along with a Q on the CLI
 
 # TODO
 # Think about how to add multiples webservices for a single deck/lang (?)
@@ -148,13 +158,7 @@ def backlog():
 # And maybe later think about how to combine/concat these also to the same anki card ...
 # Is there an API for FD? Doesn't seem like it.
 
-# Use this freeDictionary API, so as to need less regex parsing
-# https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
-
-# Add support for wiktionary? (IPA?) ?
-# eg via ? https://github.com/Suyash458/WiktionaryParser
-
-# Add nl-specific etymology?
+# Add nl-specific etymology? (Wiktionary has some of this)
 # https://etymologiebank.nl/
 
 # FR: Or use a diff source, eg TV5
@@ -419,7 +423,7 @@ def normalizer(string, *, term=None):
         ,'educatie'
         ,'electriciteit'
         ,'electronica'
-        ,'financieel'
+        ,'financi\S+'
         ,'formeel'
         ,'geschiedenis'
         ,'handel'
@@ -444,6 +448,7 @@ def normalizer(string, *, term=None):
         ,'technisch'
         ,'theater'
         ,'transport'
+        ,'verkeer'
         ,'verouderd'
         ,'visserij'
         ,'vulgair'
@@ -465,7 +470,7 @@ def normalizer(string, *, term=None):
             # Notify, so you can (manually) add this one to the 'categories' list above.
             print(f'\nNew category [{COLOR_WARN}{category}{COLOR_RESET}]\n',)
             beep()
-            time.sleep(5)
+            # time.sleep(5)
 
     # Replace remaining <sup> tags
     string = re.sub(r'<sup>', r'^', string)
@@ -889,6 +894,8 @@ def get_unreviewed(deck, ts=None):
 def get_due(deck, ts=None):
     """"A list of all cards (IDs) due.
 
+    Note that `findCards` returns cards in order of creation (which isn't quite the same as when they're due).
+
     This function ignores whether a review on this deck was already done today (cf. get_unreviewed())
 
     The cards due (is:due) are made up of two sets: (new cards are not considered due)
@@ -1146,9 +1153,15 @@ def editor(content_a: str='', /) -> str:
     Note, this does not call normalizer() automatically
     """
 
-    with tempfile.NamedTemporaryFile(mode='w+t', suffix=".tmp", delete=False) as tf:
+    # with tempfile.NamedTemporaryFile(mode='w+t', suffix=".tmp", delete=False) as tf:
+    temp_file_name = '/tmp/' + os.path.basename(__file__).removesuffix('.py') + '.tmp'
+    # try:
+    #     os.unlink(temp_file_name)
+    # except:
+    #     pass
+    with open(temp_file_name, 'w') as tf:
         tf.write(content_a)
-        temp_file_name = tf.name
+        # temp_file_name = tf.name
 
     # The split() is necessary because $EDITOR might contain multiple words
     subprocess.call(os.getenv('EDITOR', 'nano').split() + [temp_file_name])
@@ -1228,10 +1241,11 @@ def sync():
     invoke('sync')
     # And in case we downloaded new empty cards:
     get_empty.cache_clear()
+    # And in case we want to sync reviews done elsewhere:
+    get_due.cache_clear()
 
     # These will expire in time ... can also just reload the script with key '.'
     # get_new.cache_clear()
-    # get_due.cache_clear()
     # get_mid.cache_clear()
     # get_old.cache_clear()
 
@@ -1306,8 +1320,9 @@ def main(deck):
     global suggestions
     suggestions = []
 
-    # Any local changes (new/deleted cards) pending sync?
+    # Count num of local changes (new/deleted cards) pending sync?
     edits_n = 0
+    sync_last_epoch = int(time.time())
 
     # The IDs of cards that only have a front, but not back (no definition)
     # This works like a queue of cards to be deleted, fetched and (re)added.
@@ -1420,11 +1435,18 @@ def main(deck):
 
         menu += [ '│' ]
         menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
-        sync_cta_thresh = 10
-        if edits_n > sync_cta_thresh :
-            menu += [ COLOR_WARN + "*" + COLOR_RESET ]
-        else:
-            menu += [ ' ' ]
+
+        sync_thresh_edits = 10
+        sync_thresh_secs = 60 * 60
+        if edits_n > sync_thresh_edits or int(time.time()) > sync_last_epoch + sync_thresh_secs :
+            sync()
+            sync_last_epoch = int(time.time())
+            edits_n = 0
+
+        # if edits_n > sync_thresh_edits :
+        #     menu += [ COLOR_WARN + "*" + COLOR_RESET ]
+        # else:
+        #     menu += [ ' ' ]
 
         if n_old := deck and len(get_old(deck, ts=time.time()//3600)) :
             menu += [ "mature:" + COLOR_VALUE + str(n_old) + COLOR_RESET ]
@@ -1585,6 +1607,7 @@ def main(deck):
         elif key in ('y', '*') :
             sync()
             edits_n = 0
+            sync_last_epoch = int(time.time())
         elif key == 't' and card_id:
             if delete_card(card_id):
                 edits_n += 1
@@ -1692,6 +1715,7 @@ def main(deck):
             card_ids_i = 0
         elif key in ('1','2','3','4') and card_id and (is_due(card_id) or is_new(card_id)):
             answer_card(card_id, int(key))
+            edits_n += 1
             # Push reviewed cards onto readline history, if it wasn't already the search term
             if term != front:
                 readline.add_history(front)
@@ -1728,7 +1752,7 @@ def main(deck):
         elif key in ('/', 'v'):
             term = ''
             card_ids = get_due(deck, ts=time.time()//3600)
-            random.shuffle(card_ids)
+            # random.shuffle(card_ids)
             card_ids_i = 0
         elif key in ('s', Key.CTRL_P, Key.UP):
             # Exact match search

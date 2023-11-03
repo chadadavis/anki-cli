@@ -145,7 +145,8 @@ def backlog():
 # Or rather than customize it for one service, make a command (!) to pipe to a shell command
 # Doesn't vim also have something like that?
 # And save the last command in readline (or read from bash history?)
-# Then use the chatgpt.py script to receive content piped in, along with a Q on the CLI
+# Then use the chatgpt.py script to receive content piped in, along with a Qestion on the CLI
+# Make sure to also include the term (since it's not part of the def content)
 
 # TODO
 # Think about how to add multiples webservices for a single deck/lang (?)
@@ -1365,6 +1366,10 @@ def main(deck):
                 print(renderer('', term=front))
                 print(wrapper(COLOR_INFO + 'Review?\n' + COLOR_COMMAND + '[Press any key]' + COLOR_RESET))
                 scroll_screen_to_menu(line_pos=5)
+                # Push reviewed cards onto readline history, if it wasn't already the search term
+                if term != front:
+                    readline.add_history(front)
+                # Wait, so user has time to think about the def, before seeing it
                 try:
                     key = readchar.readkey()
                 except (KeyboardInterrupt) as e:
@@ -1436,9 +1441,16 @@ def main(deck):
         menu += [ '│' ]
         menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
 
+        # Check for incoming changes periodically.
+        # But push outgoing changes sooner, since we know if any are pending.
+        # TODO consider disabling auto-sync if auto-scroll is enabled ?
         sync_thresh_edits = 10
         sync_thresh_secs = 60 * 60
-        if edits_n > sync_thresh_edits or int(time.time()) > sync_last_epoch + sync_thresh_secs :
+        if  0  \
+            or  int(time.time()) > sync_last_epoch + sync_thresh_secs \
+            or (int(time.time()) > sync_last_epoch + sync_thresh_secs//10 and edits_n) \
+            or edits_n > sync_thresh_edits \
+            :
             sync()
             sync_last_epoch = int(time.time())
             edits_n = 0
@@ -1716,9 +1728,6 @@ def main(deck):
         elif key in ('1','2','3','4') and card_id and (is_due(card_id) or is_new(card_id)):
             answer_card(card_id, int(key))
             edits_n += 1
-            # Push reviewed cards onto readline history, if it wasn't already the search term
-            if term != front:
-                readline.add_history(front)
             # Auto-advance
             if card_ids_i < len(card_ids) - 1:
                 card_ids_i += 1
@@ -1857,13 +1866,14 @@ if __name__ == "__main__":
     parser = optparse.OptionParser()
     parser.add_option('-d', "--debug",       dest='debug',  action='store_true')
     parser.add_option('-s', "--auto-scroll", dest='scroll', action='store_true',
-        help="Iterate over all cards when multiple results. Useful in combo with --auto-update"
+        help="Iterate over all cards when multiple results. Useful in combo with --auto-update",
         )
     parser.add_option('-u', "--auto-update", dest='update', action='store_true',
-        help="Replace the source of each viewed card with the rendered plain text, if different"
+        help="Replace the source of each viewed card with the rendered plain text, if different",
+        default=True,
         )
     parser.add_option('-k', "--deck",        dest='deck',
-        help="Name of Anki deck to use (must be a 2-letter language code, e.g. 'en')"
+        help="Name of Anki deck to use (must be a 2-letter language code, e.g. 'en')",
         )
     (options, args) = parser.parse_args()
 

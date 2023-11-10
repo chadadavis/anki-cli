@@ -94,7 +94,8 @@ def backlog():
 
 # TODO BUG: any deck name that's not an iso2 code (eg "Python") fails
 
-# TODO BUG: I can't review newly created cards on the 'fr' deck (nl,de,en are fine though). Why? Diff settings?
+# logging.error() should also go to the screen, somehow ...
+# Maybe wait until I think of a better way to manage the UI, eg ncurses, etc ?
 
 # TODO optparse deprecated, switch to argparse
 
@@ -182,11 +183,6 @@ def backlog():
 # And maybe also the sync() since it should just be fire-and-forget (but then update empties count)
 # TODO make menu rendering async, or just make all external queries async?
 # Migrate from urrlib to httpx (or aiohttp) to use async
-
-# Anki: unify note types (inheritance), not for this code, but in the app.
-# Learn what the purpose of different notes types is, and then make them all use
-# the same, or make them inherit from each other, so that I don't have to
-# configure/style a separate note type for each language.
 
 # Since I'd also like to try to make formatted text versions for other
 # languages, maybe regex-based rendering isn't the most sustainable approach.
@@ -299,8 +295,8 @@ def invoke(action, **params):
 
         error = response['error']
         if error is not None:
-            logging.warning('error:\n' + str(error), stacklevel=2)
-            logging.warning('result:\n' + pp.pformat(response['result']), stacklevel=2)
+            logging.error('error:\n' + str(error), stacklevel=2)
+            logging.error('result:\n' + pp.pformat(response['result']), stacklevel=2)
             return None
         else:
             return response['result']
@@ -1095,7 +1091,7 @@ def add_card(term, definition=None, *, deck):
     get_empty.cache_clear()
     note = {
         'deckName': deck,
-        'modelName': 'Basic-' + deck,
+        'modelName': 'Basic',
         'fields': {'Front': term},
         'options': {'closeAfterAdding': True},
     }

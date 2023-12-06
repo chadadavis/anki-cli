@@ -92,6 +92,24 @@ def backlog():
 
 # Backlog/TODO
 
+# Duplicate detection:
+# Android and Desktop apps: detects dupes across the same note type, not the same deck.
+# Desktop will allow you to see what the dupes are, ie if they're in a diff deck.
+# Android doesn't, though, so you might create dupes there when adding new (empty) cards.
+# Once you get back to anki-add-cli, the dupes will be rejected, though.
+# TODO add_card should beep if failed for any reason, or notice, or something
+# TODO when we dequeue the empties, first check if it that 'front' is already in this deck, before attempting fetching/adding
+
+# See the extension that tries to work around duplicate detection across the note type:
+# https://ankiweb.net/shared/info/1587955871
+# What about Android?
+
+# Add support for wiktionary? (IPA?) ?
+# Note that the web site searches across languages. How to restrict to a given lang?
+# eg via ? https://github.com/Suyash458/WiktionaryParser
+
+# Consider putting the menu at the top of the screen, since I focus on the top left to see the words anyway
+
 # TODO BUG: any deck name that's not an iso2 code (eg "Python") fails
 
 # logging.error() should also go to the screen, somehow ...
@@ -108,14 +126,15 @@ def backlog():
 # Use this freeDictionary API, so as to need less regex parsing
 # https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
 
-# Add support for wiktionary? (IPA?) ?
-# eg via ? https://github.com/Suyash458/WiktionaryParser
 
 # AnkiConnect deprecate deprecated functions, eg:
 # addons21/AnkiConnect/__init__.py:520:allNames is deprecated: please use 'all_names'
 # See the log, eg when starting anki from the CLI
 
 # TODO make a class for a Card ?
+# Or at least wrap it in my `dictd` class (from startup.py), so that it could be:
+#   card.fields.front.value (instead of the verbose syntax)
+#
 # Easiest to just use:
 # https://docs.python.org/3/library/dataclasses.html
 # from dataclasses import dataclass
@@ -129,6 +148,8 @@ def backlog():
 # Make a stringified version of the card, for logging, with just these fields:
 # 'cardId' 'note' 'deckName' 'interval' ['fields']['front']['value']
 # logging.debug(...)
+
+# In highlighter() highlight `query` and `term` in diff colors
 
 # Logging:
 # Modifying it to send WARNING level messages also to logging.StreamHandler()
@@ -295,6 +316,7 @@ def invoke(action, **params):
 
         error = response['error']
         if error is not None:
+            beep(); beep();
             logging.error('error:\n' + str(error), stacklevel=2)
             logging.error('result:\n' + pp.pformat(response['result']), stacklevel=2)
             return None
@@ -1086,14 +1108,20 @@ def get_card(id):
 
 
 def add_card(term, definition=None, *, deck):
-    """Create a new Note. (If you want the card_id, do another search for it)"""
+    """Create a new Note.
+
+    (If you want the card_id, do another search for it)
+    """
     get_new.cache_clear()
     get_empty.cache_clear()
     note = {
         'deckName': deck,
         'modelName': 'Basic',
         'fields': {'Front': term},
-        'options': {'closeAfterAdding': True},
+        'options': {
+            'closeAfterAdding': True,
+            'duplicateScope': 'deck',
+        },
     }
     # If there's no definition/content, allow user to write/paste some
     definition = definition or editor(term + '\n\n')
@@ -1427,7 +1455,8 @@ def main(deck):
             menu += [ "(E)dit" ]
             menu += [ "(R)eplace" ]
 
-            if is_due(card_id) or is_new(card_id):
+            # if is_due(card_id) or is_new(card_id):
+            if is_due(card_id) :
                 menu += [ '(1-4) ' + COLOR_WARN + '?' + COLOR_RESET]
                 # menu += [ f"{card['interval']:5d} d" ]
             else:
@@ -1731,14 +1760,19 @@ def main(deck):
             card_id = empty_ids[0]
             term = get_card(card_id)['fields']['Front']['value']
             delete_card(card_id)
+            edits_n += 1
             get_empty.cache_clear()
             empty_ids = get_empty(deck)
-            card_id = None
             card_ids = []
+            card_id = None
             wild_n  = None
-            edits_n += 1
-            # Update readline, as if I had searched for this term
+            # Update readline, as if I had typed this term
             readline.add_history(term)
+
+            # Already have this card in this deck, duplicate ?
+            if card_ids := search_anki(term, deck=deck) :
+                card_ids_i = 0
+                continue
 
             # auto fetch
             clear_line()
@@ -1791,7 +1825,7 @@ def main(deck):
             card_ids = search_anki(term, deck=deck)
             card_ids_i = 0
             # Check other possible query types:
-            # TODO do all the searches (by try to minimise exact and wildcard into one request)
+            # TODO do all the searches (by trying to minimise exact and wildcard into one request)
             # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
 
             wild_n = len(set(search_anki(term, deck=deck, field=None)) - set(card_ids))

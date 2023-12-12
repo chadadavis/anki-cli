@@ -36,6 +36,12 @@ anew.
 Cards should to use the CSS style: `white-space: pre-wrap;` to enable wrapping
 of raw text.
 
+Note on Duplicate detection:
+Android and Desktop apps: detects dupes across the same note type, not the same deck.
+Desktop will allow you to see what the dupes are, ie if they're in a diff deck.
+Android doesn't, though, so you might create dupes there when adding new (empty) cards. That's ok.
+Once you get back to anki-add-cli, and dequeue the empties, the existing card will be detected.
+
 """
 
 # Note, that regex search in Anki is supported from 2.1.24+ onward
@@ -66,7 +72,6 @@ import urllib
 
 import autopage
 import bs4  # BeautifulSoup
-import httpx
 # NB, the pip package is called iso-639 (with "-").
 # And this is TODO DEPRECATED
 # DEPRECATION: iso-639 is being installed using the legacy 'setup.py install'
@@ -75,6 +80,7 @@ import httpx
 # replacement is to enable the '--use-pep517' option. Discussion can be found at
 # https://github.com/pypa/pip/issues/8559
 import iso639  # Map e.g. 'de' to 'german', as required by SnowballStemmer
+import pyperclip
 import readchar  # For reading single key-press commands
 # The override for `re` is necessary for wildcard searches, due to extra interpolation.
 # Otherwise 're' raises an exception. Search for 'regex' below.
@@ -92,14 +98,6 @@ def backlog():
 
 # Backlog/TODO
 
-# Duplicate detection:
-# Android and Desktop apps: detects dupes across the same note type, not the same deck.
-# Desktop will allow you to see what the dupes are, ie if they're in a diff deck.
-# Android doesn't, though, so you might create dupes there when adding new (empty) cards.
-# Once you get back to anki-add-cli, the dupes will be rejected, though.
-# TODO add_card should beep if failed for any reason, or notice, or something
-# TODO when we dequeue the empties, first check if it that 'front' is already in this deck, before attempting fetching/adding
-
 # See the extension that tries to work around duplicate detection across the note type:
 # https://ankiweb.net/shared/info/1587955871
 # What about Android?
@@ -109,6 +107,7 @@ def backlog():
 # eg via ? https://github.com/Suyash458/WiktionaryParser
 
 # Consider putting the menu at the top of the screen, since I focus on the top left to see the words anyway
+# But then I'd still need to keep the search/input line at the bottom, due to the sequence of printing
 
 # TODO BUG: any deck name that's not an iso2 code (eg "Python") fails
 
@@ -126,6 +125,9 @@ def backlog():
 # Use this freeDictionary API, so as to need less regex parsing
 # https://github.com/Max-Zhenzhera/python-freeDictionaryAPI/
 
+# Background thread to keep cached data up-to-date, eg when cached values need to be uncached/refreshed.
+# Else eg the desk screen has to make many slow API calls
+# Or, is there a way/an API call to get all the counts of new/learning/reviewing from all decks in one call?
 
 # AnkiConnect deprecate deprecated functions, eg:
 # addons21/AnkiConnect/__init__.py:520:allNames is deprecated: please use 'all_names'
@@ -149,11 +151,25 @@ def backlog():
 # 'cardId' 'note' 'deckName' 'interval' ['fields']['front']['value']
 # logging.debug(...)
 
-# In highlighter() highlight `query` and `term` in diff colors
+# Also make a class to represent the ResultSet, so that we don't have to separately maintain card_ids_i ?
+# Needs bidirectional/adhoc traversal, like a doubly linked list.
+# (A iter() only allows forward traversal. And `deque` is for consuming elements out of the list.)
+# I don't really need all the overhead of a doubly linked list (the list won't be modified, just deleted)
+# I just need bidirectional iteration (maybe useful in general?)
+# But a generator iterator might not work, since it's just freezing the state of a single function call.
+# But I need to differentiate between next() vs prev()
+# And what would happen if the underlying list were modified?
+# Should I require the underlying DS to be a tuple for simplicity?
+# Is there an existing PyPi for an iterator that has a prev() ?
+
+# The 'u' 'update' (for normalization) should also prompt with a diff, before making the change (since there's no undo)
+# Just like the 'r' replace function already does.
 
 # Logging:
 # Modifying it to send WARNING level messages also to logging.StreamHandler()
 # And INFO also to the StreamHandler when in debug mode
+
+# In highlighter() highlight `query` and `term` in diff colors
 
 # BUG why does beep() not beep unless in debug mode ?
 
@@ -183,6 +199,9 @@ def backlog():
 
 # Add nl-specific etymology? (Wiktionary has some of this)
 # https://etymologiebank.nl/
+
+# using Wiktionary would enable mapping from conjugated forms eg postgevat because it links to the infinitives eg postvatten 
+# (but then search again locally first, since I might already have that verb)
 
 # FR: Or use a diff source, eg TV5
 # https://langue-francaise.tv5monde.com/decouvrir/dictionnaire/f/franc
@@ -251,28 +270,28 @@ def backlog():
 # Color codes:
 # The leading '1;' makes a foreground color bold/bright as well.
 # https://stackoverflow.com/a/33206814/256856
-YELLOW    = "\033[0;33m"
-YELLOW_LT = "\033[1;33m"
-YELLOW_BT = "\033[0;93m" #Bright
-GREEN     = "\033[0;32m"
-GREEN_LT  = "\033[1;32m"
-BLUE      = "\033[0;34m"
-BLUE_LT   = "\033[1;34m"
-RED       = "\033[0;31m"
-RED_LT    = "\033[1;31m"
-GRAY      = "\033[0;02m"
-GRAY_LT   = "\033[1;02m"
-WHITE     = "\033[0;37m"
-WHITE_LT  = "\033[1;37m"
-RESET     = "\033[0;00m"
+YELLOW_N = "\033[0;33m"
+YELLOW_L = "\033[1;33m"
+YELLOW_B = "\033[0;93m" #Bright
+WHITE_N  = "\033[0;37m"
+WHITE_L  = "\033[1;37m"
+GREEN_N  = "\033[0;32m"
+GREEN_L  = "\033[1;32m"
+GRAY_N   = "\033[0;02m"
+GRAY_L   = "\033[1;02m"
+BLUE_N   = "\033[0;34m"
+BLUE_L   = "\033[1;34m"
+RED_N    = "\033[0;31m"
+RED_L    = "\033[1;31m"
+RESET    = "\033[0;00m"
 
 # Abstract colors into use cases, in case we want to change the mapping later
-COLOR_COMMAND   = WHITE_LT
-COLOR_WARN      = YELLOW_LT
-COLOR_INFO      = GRAY
-COLOR_OK        = GREEN_LT
-COLOR_VALUE     = GREEN_LT
-COLOR_HIGHLIGHT = YELLOW_BT
+COLOR_COMMAND   = WHITE_L
+COLOR_WARN      = YELLOW_L
+COLOR_INFO      = GRAY_N
+COLOR_OK        = GREEN_L
+COLOR_VALUE     = GREEN_L
+COLOR_HIGHLIGHT = YELLOW_B
 COLOR_RESET     = RESET
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -322,49 +341,6 @@ def invoke(action, **params):
             return None
         else:
             return response['result']
-    except (ConnectionRefusedError, urllib.error.URLError) as e:
-        msg = 'Failed to connect to Anki. Make sure that Anki is running, and using the anki-connect add-on.'
-        logging.warning(msg)
-        print(msg)
-        return None
-
-
-# TODO
-async def ainvoke(action, **params):
-    reqJson = json.dumps(request(action, **params)).encode('utf-8')
-    logging.debug(b'ainvoke() ' + reqJson, stacklevel=2)
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post('http://localhost:8765', content=reqJson)
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
-            msg = 'Failed to connect to Anki. Make sure that Anki is running, and using the anki-connect add-on.'
-            logging.warning(msg)
-            print(msg)
-            return None
-
-        response = response.json()
-        if response['error'] is not None:
-            logging.warning(f"{response['error']=}")
-            return None
-        else:
-            logging.debug(f"{response['result']=}")
-            return response['result']
-
-# From Genie:
-import asyncio
-async def ai_invoke(action, **params):
-    reqJson = json.dumps(request(action, **params)).encode('utf-8')
-    logging.debug(b'invoke() ' + reqJson, stacklevel=2)
-    req = urllib.request.Request('http://localhost:8765', reqJson)
-
-    try:
-        response = await asyncio.get_event_loop().run_in_executor(None, urllib.request.urlopen, req)
-        response = json.load(response)
-        if response['error'] is None:
-            return response['result']
-        else:
-            logging.warning('error: ', response['error'])
-            return None
     except (ConnectionRefusedError, urllib.error.URLError) as e:
         msg = 'Failed to connect to Anki. Make sure that Anki is running, and using the anki-connect add-on.'
         logging.warning(msg)
@@ -863,8 +839,6 @@ def get_new(deck, ts=None):
     Note, this also includes the empty cards.
     cf. get_emtpy(), is_empty()
 
-    This set does not overlap with get_mid() nor get_old()
-
     """
     card_ids = invoke('findCards', query=f"deck:{deck} is:new")
     return card_ids
@@ -909,35 +883,40 @@ def get_unreviewed(deck, ts=None):
     return card_ids
 
 
-@functools.lru_cache(maxsize=10)
 def get_due(deck, ts=None):
-    """"A list of all cards (IDs) due.
+    """"A list of all cards (IDs) due (learning cards before reviewing cards).
 
-    Note that `findCards` returns cards in order of creation (which isn't quite the same as when they're due).
+    Note, `findCards` returns cards in order of creation (which isn't quite the same as when they're due).
 
     This function ignores whether a review on this deck was already done today (cf. get_unreviewed())
 
-    The cards due (is:due) are made up of two sets: (new cards are not considered due)
+    The cards due (is:due) are made up of two disjunct sets:
     * learn(ing) cards:  is:due  is:learn
     * review(ing) cards: is:due -is:learn
 
-    The ts param is just for cache invalidation, not for querying cards due before a certain date/time
+    Note, the ts param is just for cache invalidation, not for querying cards due before a certain date/time.
     """
 
-    return invoke('findCards', query=f"deck:{deck} is:due")
+    learning_ids  = get_learning(deck, ts)
+    reviewing_ids = get_reviewing(deck, ts)
+
+    return [ *learning_ids, *reviewing_ids ]
+
+
+@functools.lru_cache(maxsize=10)
+def get_learning(deck, ts=None):
+    learning_ids  = invoke('findCards', query=f"deck:{deck} is:due  is:learn")
+    return learning_ids
+
+
+@functools.lru_cache(maxsize=10)
+def get_reviewing(deck, ts=None):
+    reviewing_ids = invoke('findCards', query=f"deck:{deck} is:due -is:learn")
+    return reviewing_ids
 
 
 # Cards that aren't due within this many days are considered 'mature'
 MATURE_INTERVAL = 365
-
-
-# Immature cards, short interval
-# This set does not overlap with get_new() nor get_old()
-@functools.lru_cache(maxsize=10)
-def get_mid(deck, ts=None):
-    card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl<{MATURE_INTERVAL}")
-    return card_ids
-
 
 # Mature cards
 # This set does not overlap with get_new() nor get_mid()
@@ -947,8 +926,16 @@ def get_old(deck, ts=None):
     return card_ids
 
 
+# # Immature cards, short interval
+# # This set does not overlap with get_new() nor get_old()
+# @functools.lru_cache(maxsize=10)
+# def get_mid(deck, ts=None):
+#     card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl<{MATURE_INTERVAL}")
+#     return card_ids
+
+
 @functools.lru_cache
-def get_empty(deck):
+def get_empty(deck, ts=None):
     card_ids = search_anki('', deck=deck, field='back')
     return card_ids
 
@@ -1012,6 +999,9 @@ def launch_url(url):
 
 
 def search_google(term):
+    # Because I might also want to use the term to search other sites too
+    pyperclip.copy(term)
+
     query_term = urllib.parse.quote(term) # For web searches
     url=f'https://google.com/search?q={query_term}'
     launch_url(url)
@@ -1068,7 +1058,7 @@ def search_thefreedictionary(term, *, lang):
     except urllib.error.HTTPError as response:
         # Usually these are server-side errors, throttling, timeouts, etc
         if response.code != 404:
-            logging.error(response)
+            logging.warning(response)
             return
 
         # NB urllib raises an exception on 404 pages.
@@ -1142,7 +1132,9 @@ def answer_card(card_id, ease: int):
     # Note, functools.lru_cache doesn't allow removing single items from the cache
     get_card.cache_clear()
     get_new.cache_clear()
-    get_due.cache_clear()
+    get_learning.cache_clear()
+    get_reviewing.cache_clear()
+    get_unreviewed.cache_clear()
     invoke('answerCards', answers=[{'cardId': card_id, 'ease': ease}])
 
 
@@ -1160,7 +1152,7 @@ def update_card(card_id, *, front=None, back=None):
         note['fields']['Back'] = back
     response = invoke('updateNoteFields', note=note)
     if response and response['error'] is not None:
-        raise Exception(response['error'])
+        raise RuntimeError(response['error'])
 
 
 def edit_card(card_id):
@@ -1267,7 +1259,8 @@ def sync():
     # And in case we downloaded new empty cards:
     get_empty.cache_clear()
     # And in case we want to sync reviews done elsewhere:
-    get_due.cache_clear()
+    get_learning.cache_clear()
+    get_reviewing.cache_clear()
 
     # These will expire in time ... can also just reload the script with key '.'
     # get_new.cache_clear()
@@ -1429,7 +1422,7 @@ def main(deck):
             # TODO factor this out into status() func or something (curses?)
             print("Did you mean:\n")
             print("\n".join(suggestions))
-            line_pos += len(suggestions)
+            line_pos += len(suggestions) + 2
 
         scroll_screen_to_menu(line_pos=line_pos)
 
@@ -1576,6 +1569,7 @@ def main(deck):
         elif key == 'l':
             # Clear screen/card/search
             clear_screen()
+            # TODO this needs to be wrapped in a resultset that can be cleared in one command
             term = ''
             card_id = None
             card_ids = []
@@ -1587,14 +1581,45 @@ def main(deck):
         elif key == 'd':
             # Switch deck
             clear_screen()
-            decks = get_deck_names()
-            for dn in decks:
-                due = len(get_due(dn, ts=time.time()//3600))
-                # Draw a histogram to emphasize the count of due cards, as a per mille ‰
-                due_scaled = int( (os.get_terminal_size().columns - 20) * (due / 1000) )
-                print(f' * {COLOR_COMMAND}{dn:10s}{COLOR_RESET} {due:4d} ' + ('─' * due_scaled) )
 
-            scroll_screen_to_menu(line_pos=len(decks))
+            # TODO this needs to be wrapped in a resultset that can be cleared in one command
+            term = ''
+            card_id = None
+            card_ids = []
+            card_ids_i = 0
+            wild_n = None
+            suggestions = []
+            content = None
+
+            decks = get_deck_names()
+
+            # TODO factor out the rendering of table with headings and columns
+            print(' ' * 14, BLUE_N, f'{"N":>4s}', RED_N, f'{"L":>3s}', GREEN_N, f'{"R":>3s}', YELLOW_N, f'{"E":>3s}', sep=' ')
+            for dn in decks:
+                new_n = len(get_new(dn, ts=time.time()//3600))
+                learn_n = len(get_learning(dn, ts=time.time()//3600))
+                review_n = len(get_reviewing(dn, ts=time.time()//3600))
+                empty_n = len(get_empty(dn, ts=time.time()//3600))
+
+                print('* ', COLOR_COMMAND, f'{dn:10s}', end=' ')
+                print(BLUE_N if new_n > 0 else GRAY_N, f'{new_n:4d}', end=' ')
+                print(RED_N if learn_n > 0 else GRAY_N, f'{learn_n:3d}', end=' ')
+                print(GREEN_N if review_n > 0 else GRAY_N, f'{review_n:3d}', end=' ')
+                print(YELLOW_N if empty_n > 0 else GRAY_N, f'{empty_n:3d}', end=' ')
+
+                # Draw a histogram to emphasize the count of due cards, as a per mille ‰
+                # TODO factor out the scaling and tick marks drawing
+                width = os.get_terminal_size().columns - 35
+                scale = 1000
+                due_n = int( (learn_n+review_n) * width / scale )
+                # For tick marks on the axis:
+                mod   = int( 100 * width / scale )
+                quot = due_n // mod
+                rem = due_n % mod
+                print(COLOR_RESET, '|', ('─' * (mod-1) + '|') * quot, '─' * rem, sep='')
+
+            scroll_screen_to_menu(line_pos=len(decks)+1)
+            sync()
 
             deck_prev = options.deck
 
@@ -1633,13 +1658,6 @@ def main(deck):
             # This is so that `completer()` can know what lang/deck we're using for future word autocompletions
             options.deck = deck
 
-            term = ''
-            card_id = None
-            card_ids = []
-            card_ids_i = 0
-            wild_n = None
-            suggestions = []
-            content = None
             # scroll_screen()
         elif key in ('y', '*') :
             sync()
@@ -1719,9 +1737,9 @@ def main(deck):
                 hr()
                 diff_lines = list(difflib.Differ().compare(content_old.splitlines(),normalized.splitlines()))
                 for i in range(len(diff_lines)) :
-                    diff_lines[i] = re.sub(r'^(\+\s*\S+.*?)$',    GREEN + r'\1' + COLOR_RESET, diff_lines[i])
-                    diff_lines[i] = re.sub(r'^(\-\s*\S+.*?)$',      RED + r'\1' + COLOR_RESET, diff_lines[i])
-                    diff_lines[i] = re.sub(r'^(\?\s*\S+.*?)$', WHITE_LT + r'\1' + COLOR_RESET, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\+\s*\S+.*?)$',    GREEN_N + r'\1' + COLOR_RESET, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\-\s*\S+.*?)$',      RED_N + r'\1' + COLOR_RESET, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\?\s*\S+.*?)$', WHITE_L + r'\1' + COLOR_RESET, diff_lines[i])
                 print(*diff_lines, sep='\n')
 
                 try:
@@ -1770,6 +1788,7 @@ def main(deck):
             readline.add_history(term)
 
             # Already have this card in this deck, duplicate ?
+            # TODO BUG this should be an exact search. Implement that flag. Other callers need it too?
             if card_ids := search_anki(term, deck=deck) :
                 card_ids_i = 0
                 continue
@@ -1790,8 +1809,9 @@ def main(deck):
 
         elif key in ('/', 'v'):
             term = ''
-            card_ids = get_due(deck, ts=time.time()//3600)
-            # random.shuffle(card_ids)
+            content = None
+            # If no cards are due, allow reviewing of new cards, if any
+            card_ids = get_due(deck, ts=time.time()//3600) or get_new(deck, ts=time.time()//3600)
             card_ids_i = 0
         elif key in ('s', Key.CTRL_P, Key.UP):
             # Exact match search
@@ -1848,6 +1868,7 @@ def main(deck):
             edits_n += 1
 
         else:
+            logging.debug(f'Unknown command: {key}')
             # Unrecognized command.
             # TODO add a '?' function that programmatically lists available shortcuts (if they're available in a dict)
             beep()

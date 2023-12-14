@@ -36,6 +36,10 @@ anew.
 Cards should to use the CSS style: `white-space: pre-wrap;` to enable wrapping
 of raw text.
 
+Note, only the note type (model) called 'Basic' is supported.
+We assume that is has the standard field names 'Front' and 'Back'
+Any other cards won't be displayed
+
 Note on Duplicate detection:
 Android and Desktop apps: detects dupes across the same note type, not the same deck.
 Desktop will allow you to see what the dupes are, ie if they're in a diff deck.
@@ -72,6 +76,7 @@ import urllib
 
 import autopage
 import bs4  # BeautifulSoup
+
 # NB, the pip package is called iso-639 (with "-").
 # And this is TODO DEPRECATED
 # DEPRECATION: iso-639 is being installed using the legacy 'setup.py install'
@@ -79,15 +84,19 @@ import bs4  # BeautifulSoup
 # not installed. pip 23.1 will enforce this behavior change. A possible
 # replacement is to enable the '--use-pep517' option. Discussion can be found at
 # https://github.com/pypa/pip/issues/8559
+# Alternatively, try: https://pypi.org/project/pycountry/
 import iso639  # Map e.g. 'de' to 'german', as required by SnowballStemmer
+
 import pyperclip
 import readchar  # For reading single key-press commands
+
 # The override for `re` is necessary for wildcard searches, due to extra interpolation.
 # Otherwise 're' raises an exception. Search for 'regex' below.
 # https://learnbyexample.github.io/py_regular_expressions/gotchas.html
 # https://docs.python.org/3/library/re.html#re.sub
 # "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
 import regex as re
+
 import unidecode
 from nltk.stem.snowball import SnowballStemmer
 
@@ -109,7 +118,10 @@ def backlog():
 # Consider putting the menu at the top of the screen, since I focus on the top left to see the words anyway
 # But then I'd still need to keep the search/input line at the bottom, due to the sequence of printing
 
-# TODO BUG: any deck name that's not an iso2 code (eg "Python") fails
+# TODO card type dependency on 'Basic' :
+# But rather than depend on 'Front' and 'Back', maybe we could generalize this to get the get_card()['question'] and ...['answer']
+# Those are the rendered versions, which contains whatever necessary fields are defined by the card type, the rendered versions (full of HTML/CSS).
+# So, we should try to detect if it's already normalized, as it never will be. For that we'd have to check the raw field content in the note (eg Front or Back)
 
 # logging.error() should also go to the screen, somehow ...
 # Maybe wait until I think of a better way to manage the UI, eg ncurses, etc ?
@@ -128,6 +140,7 @@ def backlog():
 # Background thread to keep cached data up-to-date, eg when cached values need to be uncached/refreshed.
 # Else eg the desk screen has to make many slow API calls
 # Or, is there a way/an API call to get all the counts of new/learning/reviewing from all decks in one call?
+# See getDeckStats which gives new_count, learn_count, review_count and "name", for each deck object
 
 # AnkiConnect deprecate deprecated functions, eg:
 # addons21/AnkiConnect/__init__.py:520:allNames is deprecated: please use 'all_names'
@@ -608,9 +621,9 @@ def highlighter(string, query, *, term='', deck=None):
     term_or_query = unidecode.unidecode(term or query)
 
     # TODO also factor out the stemming (separate from highlighting, since lang-specific)
-    if deck:
-        # Map e.g. 'de' to 'german', as required by SnowballStemmer
-        lang = iso639.languages.get(alpha2=deck).name.lower()
+    # Map e.g. 'de' to 'german', as required by SnowballStemmer
+    if deck and deck in iso639.languages.part1:
+        lang = iso639.languages.get(part1=deck).name.lower()
         stemmer = SnowballStemmer(lang)
         stem = stemmer.stem(query)
         if stem != query:
@@ -1092,8 +1105,14 @@ def search_thefreedictionary(term, *, lang):
 
 @functools.lru_cache(maxsize=100)
 def get_card(id):
+    """Only works for cards with note type 'Basic' (with fields 'Front', 'Back')
+    """
+
     cardsInfo = invoke('cardsInfo', cards=[id])
     card = cardsInfo[0]
+    logging.info(f"Model/Note type:" + card['modelName'])
+    if card['modelName'] != 'Basic' :
+        return
     return card
 
 
@@ -1355,16 +1374,16 @@ def main(deck):
         # Testing if the content from the Anki DB differs from the rendered content
         updatable = False
         normalized = ''
-
+        card_id = None
         if card_ids:
             # Set card_id and content based on card_ids and card_ids_i
-            card_id = card_ids[card_ids_i]
-            card = get_card(card_id)
-            normalized = normalize_card(card)
-            if normalized != card['fields']['Back']['value']:
-                updatable = True
+            card = get_card(card_ids[card_ids_i])
+            if card:
+                card_id = card_ids[card_ids_i]
+                normalized = normalize_card(card)
+                if normalized != card['fields']['Back']['value']:
+                    updatable = True
         else:
-            card_id = None
             # Remind the user of any previous context, (eg to allow to Add)
             if content:
                 normalized = normalizer(content, term=term)
@@ -1594,18 +1613,18 @@ def main(deck):
             decks = get_deck_names()
 
             # TODO factor out the rendering of table with headings and columns
-            print(' ' * 14, BLUE_N, f'{"N":>4s}', RED_N, f'{"L":>3s}', GREEN_N, f'{"R":>3s}', YELLOW_N, f'{"E":>3s}', sep=' ')
+            print(' ' * 14, YELLOW_N, f'{"E":>3s}', BLUE_N, f'{"N":>4s}', RED_N, f'{"L":>3s}', GREEN_N, f'{"R":>3s}', sep=' ')
             for dn in decks:
+                empty_n = len(get_empty(dn, ts=time.time()//3600))
                 new_n = len(get_new(dn, ts=time.time()//3600))
                 learn_n = len(get_learning(dn, ts=time.time()//3600))
                 review_n = len(get_reviewing(dn, ts=time.time()//3600))
-                empty_n = len(get_empty(dn, ts=time.time()//3600))
 
                 print('* ', COLOR_COMMAND, f'{dn:10s}', end=' ')
+                print(YELLOW_N if empty_n > 0 else GRAY_N, f'{empty_n:3d}', end=' ')
                 print(BLUE_N if new_n > 0 else GRAY_N, f'{new_n:4d}', end=' ')
                 print(RED_N if learn_n > 0 else GRAY_N, f'{learn_n:3d}', end=' ')
                 print(GREEN_N if review_n > 0 else GRAY_N, f'{review_n:3d}', end=' ')
-                print(YELLOW_N if empty_n > 0 else GRAY_N, f'{empty_n:3d}', end=' ')
 
                 # Draw a histogram to emphasize the count of due cards, as a per mille ‰
                 # TODO factor out the scaling and tick marks drawing

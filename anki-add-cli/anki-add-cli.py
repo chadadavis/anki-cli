@@ -1932,19 +1932,30 @@ def completer(text: str, state: int) -> str:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-k', "--deck",
-        help="Name of Anki deck to use (must be a 2-letter language code, e.g. 'en')",
+    parser.add_argument(
+        '-k',
+        "--deck",
+        help=
+        "Name of Anki deck to use (must be a 2-letter language code, e.g. 'en')",
     )
-    parser.add_argument('-d', "--debug",
+    parser.add_argument(
+        '-d',
+        "--debug",
         action='store_true',
     )
-    parser.add_argument('-s', "--scroll",
+    parser.add_argument(
+        '-s',
+        "--scroll",
         action='store_true',
-        help="(Auto) iterate over all cards when multiple results. Useful in combo with --update",
+        help=
+        "(Auto) iterate over all cards when multiple results. Useful in combo with --update",
     )
-    parser.add_argument('-u', "--update",
+    parser.add_argument(
+        '-u',
+        "--update",
         action='store_true',
-        help="(Auto) replace the source of each viewed card with the rendered plain text, if different",
+        help=
+        "(Auto) replace the source of each viewed card with the rendered plain text, if different",
     )
     options = parser.parse_args()
 

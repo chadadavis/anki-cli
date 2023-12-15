@@ -340,7 +340,7 @@ def invoke(action, **params):
             # Simplify some debug logging
             if isinstance(result_log, list) and len(result_log) > 10:
                 result_log = 'len:' + str(len(result_log))
-            if isinstance(result_log, dict) and result_log['fields']:
+            if isinstance(result_log, dict) and 'fields' in result_log:
                 result_log['fields']['Back']['value'] = '...'
             logging.debug('result:\n' + pp.pformat(result_log), stacklevel=2)
 

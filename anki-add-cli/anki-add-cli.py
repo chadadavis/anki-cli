@@ -951,6 +951,14 @@ def get_empty(deck, ts=None):
     return card_ids
 
 
+@functools.lru_cache
+def get_deck_stats(decks=None, *, ts=None):
+    decks = decks or get_deck_names()
+    r = invoke('getDeckStats', decks=decks)
+    d = { r[id]['name']: { 'new':r[id]['new_count'],'learn':r[id]['learn_count'],'review':r[id]['review_count'],  } for id in r }
+    return d
+
+
 def are_due(card_ids):
     """Deprecated. Card is ready to review (either due, or new)
 
@@ -1610,16 +1618,20 @@ def main(deck):
 
             decks = get_deck_names()
 
-            # TODO factor out the rendering of table with headings and columns
-            print(' ' * 14, YELLOW_N, f'{"E":>3s}', BLUE_N, f'{"N":>4s}', RED_N, f'{"L":>3s}', GREEN_N, f'{"R":>3s}', sep=' ')
+            stats = get_deck_stats(ts=time.time()//60)
+
+            # TODO factor out the rendering of table with headings and columns (auto-calculate widths)
+            print(' ' * 13, YELLOW_N, BLUE_N, f'{"N":>4s}', RED_N, f'{"L":>3s}', GREEN_N, f'{"R":>3s}', sep=' ')
             for dn in decks:
-                empty_n = len(get_empty(dn, ts=time.time()//3600))
-                new_n = len(get_new(dn, ts=time.time()//3600))
-                learn_n = len(get_learning(dn, ts=time.time()//3600))
-                review_n = len(get_reviewing(dn, ts=time.time()//3600))
+                # This is a bit too slow:
+                # empty_n = len(get_empty(dn, ts=time.time()//3600))
+
+                new_n = stats[dn]['new']
+                learn_n = stats[dn]['learn']
+                review_n = stats[dn]['review']
 
                 print('* ', COLOR_COMMAND, f'{dn:10s}', end=' ')
-                print(YELLOW_N if empty_n > 0 else GRAY_N, f'{empty_n:3d}', end=' ')
+                # print(YELLOW_N if empty_n > 0 else GRAY_N, f'{empty_n:3d}', end=' ')
                 print(BLUE_N if new_n > 0 else GRAY_N, f'{new_n:4d}', end=' ')
                 print(RED_N if learn_n > 0 else GRAY_N, f'{learn_n:3d}', end=' ')
                 print(GREEN_N if review_n > 0 else GRAY_N, f'{review_n:3d}', end=' ')

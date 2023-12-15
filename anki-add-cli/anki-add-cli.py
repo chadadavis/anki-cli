@@ -54,6 +54,7 @@ Once you get back to anki-add-cli, and dequeue the empties, the existing card wi
 # https://docs.rs/regex/1.3.9/regex/#syntax
 # But it unfortunately doesn't help much for the NL words from woorden.org due to the non-consistent format.
 
+import argparse
 import datetime
 import difflib
 import enum
@@ -62,7 +63,6 @@ import html
 import json
 import logging
 import math
-import optparse
 import os
 import pprint
 import random
@@ -125,8 +125,6 @@ def backlog():
 
 # logging.error() should also go to the screen, somehow ...
 # Maybe wait until I think of a better way to manage the UI, eg ncurses, etc ?
-
-# TODO optparse deprecated, switch to argparse
 
 # Make the 'o' command open whatever the source URL was (not just woorden.org)
 
@@ -1933,19 +1931,22 @@ def completer(text: str, state: int) -> str:
 
 
 if __name__ == "__main__":
-    parser = optparse.OptionParser()
-    parser.add_option('-d', "--debug",       dest='debug',  action='store_true')
-    parser.add_option('-s', "--auto-scroll", dest='scroll', action='store_true',
-        help="Iterate over all cards when multiple results. Useful in combo with --auto-update",
-        )
-    parser.add_option('-u', "--auto-update", dest='update', action='store_true',
-        help="Replace the source of each viewed card with the rendered plain text, if different",
-        default=True,
-        )
-    parser.add_option('-k', "--deck",        dest='deck',
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-k', "--deck",
         help="Name of Anki deck to use (must be a 2-letter language code, e.g. 'en')",
-        )
-    (options, args) = parser.parse_args()
+    )
+    parser.add_argument('-d', "--debug",
+        action='store_true',
+    )
+    parser.add_argument('-s', "--scroll",
+        action='store_true',
+        help="(Auto) iterate over all cards when multiple results. Useful in combo with --update",
+    )
+    parser.add_argument('-u', "--update",
+        action='store_true',
+        help="(Auto) replace the source of each viewed card with the rendered plain text, if different",
+    )
+    options = parser.parse_args()
 
     options.debug = options.debug or bool(sys.gettrace())
 

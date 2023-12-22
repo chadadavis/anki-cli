@@ -72,7 +72,9 @@ import sys
 import tempfile
 import textwrap
 import time
-import urllib
+from typing import Optional
+from urllib import request, parse
+from urllib.error import HTTPError, URLError
 
 import autopage
 import bs4  # BeautifulSoup
@@ -109,7 +111,7 @@ def backlog():
 
 # See the extension that tries to work around duplicate detection across the note type:
 # https://ankiweb.net/shared/info/1587955871
-# What about Android?
+# But, What about Android? Can just add the duplicate, and let this script figure it out later when dequeueing empties ...
 
 # Add support for wiktionary? (IPA?) ?
 # Note that the web site searches across languages. How to restrict to a given lang?
@@ -318,22 +320,19 @@ class Key(enum.StrEnum):
     UP      = '\x1b[A'
 
 
-def request(action, **params):
+def invoke(action, **params):
     """Send a request to Anki desktop via the API for the anki-connect add-on
 
     Details:
     https://github.com/FooSoft/anki-connect/
     """
-    return {'action': action, 'params': params, 'version': 6}
 
-
-def invoke(action, **params):
-    reqJson = json.dumps(request(action, **params)).encode('utf-8')
+    reqJson = json.dumps( { 'action': action, 'params': params, 'version': 6 } ).encode('utf-8')
     logging.debug(b'invoke:' + reqJson, stacklevel=2)
-    req = urllib.request.Request('http://localhost:8765', reqJson)
+    req = request.Request('http://localhost:8765', reqJson)
 
     try:
-        response = json.load(urllib.request.urlopen(req))
+        response = json.load(request.urlopen(req))
         result_log = response['result']
 
         if options.debug:
@@ -346,17 +345,16 @@ def invoke(action, **params):
 
         error = response['error']
         if error is not None:
-            beep(); beep();
+            beep(3)
             logging.error('error:\n' + str(error), stacklevel=2)
             logging.error('result:\n' + pp.pformat(response['result']), stacklevel=2)
             return None
         else:
             return response['result']
-    except (ConnectionRefusedError, urllib.error.URLError) as e:
+    except (ConnectionRefusedError, URLError) as e:
         msg = 'Failed to connect to Anki. Make sure that Anki is running, and using the anki-connect add-on.'
         logging.warning(msg)
-        print(msg)
-        return None
+        sys.exit(msg)
 
 
 def get_deck_names():
@@ -410,11 +408,12 @@ def normalizer(string, *, term=None):
     categories = [
         *[]
         # These are just suffixes that mean "study of a(ny) field"
-        ,'\S+kunde'
-        ,'\S+ografie'
-        ,'\S+ologie'
-        ,'\S+onomie'
-        ,'\S*techniek'
+        ,r'\S+kunde'
+        ,r'\S+ografie'
+        ,r'\S+ologie'
+        ,r'\S+onomie'
+        ,r'\S*techniek'
+        ,r'financi\S+'
 
         ,'algemeen'
         ,'ambacht'
@@ -429,7 +428,6 @@ def normalizer(string, *, term=None):
         ,'educatie'
         ,'electriciteit'
         ,'electronica'
-        ,'financi\S+'
         ,'formeel'
         ,'geschiedenis'
         ,'handel'
@@ -685,7 +683,7 @@ def highlighter(string, query, *, term='', deck=None):
 
             # Allow separable verbs to be separated, in both directions.
             # ineenstorten => 'stortte ineen'
-            # TODO BUG capture canonical forms that end with known prepositions (make a list)
+            # BUG capture canonical forms that end with known prepositions (make a list)
             # eg teruggaan op => ging terug op (doesn't work here)
             # We should maybe just remove the trailing preposition (if it was also a trailing word in the 'front')
             if separable := re.findall(r'^(\S+)\s+(\S+)$', match):
@@ -796,7 +794,7 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
     # This implies that the user should, when in doubt, use double chars in the query
     # deck:nl (front:maaken OR front:maken)
     # or use a re: (but that doesn't seem to work)
-    # TODO BUG: this isn't a proper Combination (maths), so it misses some cases
+    # BUG: this isn't a proper Combination (maths), so it misses some cases
     # TODO consider a stemming library here?
     if deck == 'nl':
         while True:
@@ -1021,13 +1019,13 @@ def search_google(term):
     # Because I might also want to use the term to search other sites too
     pyperclip.copy(term)
 
-    query_term = urllib.parse.quote(term) # For web searches
+    query_term = parse.quote(term) # For web searches
     url=f'https://google.com/search?q={query_term}'
     launch_url(url)
 
 
 def search_woorden(term, *, url='http://www.woorden.org/woord/'):
-    query_term = urllib.parse.quote(term) # For web searches
+    query_term = parse.quote(term) # For web searches
     url = url + query_term
     logging.info(url)
     # TODO factor this out into an on-screen status() func or something (curses?)
@@ -1035,7 +1033,7 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
 
     try:
-        response = urllib.request.urlopen(url)
+        response = request.urlopen(url)
         content = response.read().decode('utf-8')
     except (Exception, KeyboardInterrupt) as e:
         logging.info(e)
@@ -1063,7 +1061,7 @@ def search_thefreedictionary(term, *, lang):
     return_obj = {}
     if not term or '*' in term:
         return
-    query_term = urllib.parse.quote(term) # For web searches
+    query_term = parse.quote(term) # For web searches
     url = f'https://{lang}.thefreedictionary.com/{query_term}'
     logging.info(url)
 
@@ -1072,9 +1070,9 @@ def search_thefreedictionary(term, *, lang):
     print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
 
     try:
-        response = urllib.request.urlopen(url)
+        response = request.urlopen(url)
         content = response.read().decode('utf-8')
-    except urllib.error.HTTPError as response:
+    except HTTPError as response:
         # Usually these are server-side errors, throttling, timeouts, etc
         if response.code != 404:
             logging.warning(response)
@@ -1332,8 +1330,9 @@ def scroll_screen_to_menu(content="", line_pos=None):
     print("\n" * lines_n, end='')
 
 
-def beep():
-    print("\a", end='', flush=True)
+def beep(n: int = 2):
+    for _ in range(n):
+        print("\a", end='', flush=True)
 
 
 def main(deck):
@@ -1583,7 +1582,7 @@ def main(deck):
 
         if key in ('x', 'q', Key.ESC_ESC) :
             clear_line()
-            exit()
+            sys.exit(0)
         elif key in ('.') :
             # Reload this script (for latest changes)
             # And show the last modification time of this file
@@ -1752,7 +1751,6 @@ def main(deck):
                 # idempotent?
                 normalized2 = normalizer(normalized, term=front)
                 if normalized != normalized2:
-                    # TODO WARN
                     logging.warning("Normalizer not idempotent")
 
                 if content_old == normalized :
@@ -1786,7 +1784,7 @@ def main(deck):
         elif key == 'g' and term:
             search_google(term)
         elif key == 'o' and term:
-            url_term = urllib.parse.quote(term) # For web searches
+            url_term = parse.quote(term) # For web searches
             # TODO this should use whatever the currently active dictionary is
             url=f'http://www.woorden.org/woord/{url_term}'
             launch_url(url)
@@ -1817,7 +1815,7 @@ def main(deck):
             readline.add_history(term)
 
             # Already have this card in this deck, duplicate ?
-            # TODO BUG this should be an exact search. Implement that flag. Other callers need it too?
+            # BUG this should be an exact search. Implement that flag. Other callers need it too?
             if card_ids := search_anki(term, deck=deck) :
                 card_ids_i = 0
                 continue
@@ -1904,10 +1902,10 @@ def main(deck):
             # TODO could set a flag here to skip (re-)rendering the next round, since redundant
 
 
-def completer(text: str, state: int) -> str:
+def completer(text: str, state: int) -> Optional[str]:
     completions = []
     if not text:
-        return
+        return None
 
     # Unidecode allows accent-insensitive autocomplete
     ud = unidecode.unidecode
@@ -1921,9 +1919,8 @@ def completer(text: str, state: int) -> str:
 
     # Completions via recent spellcheck suggestions (from last online fetch)
     completions += [
-                    s for s in suggestions
-                    if ud(s).casefold().startswith(text.casefold())
-                    ]
+        s for s in suggestions if ud(s).casefold().startswith(text.casefold())
+    ]
 
     # Autocomplete via prefix search in Anki (via local HTTP server)
     global options
@@ -1940,6 +1937,8 @@ def completer(text: str, state: int) -> str:
     if state == 0:
         # text doesn't match any possible completion
         beep()
+
+    return None
 
 
 if __name__ == "__main__":

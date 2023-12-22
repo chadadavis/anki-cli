@@ -36,15 +36,16 @@ anew.
 Cards should to use the CSS style: `white-space: pre-wrap;` to enable wrapping
 of raw text.
 
-Note, only the note type (model) called 'Basic' is supported.
-We assume that is has the standard field names 'Front' and 'Back'
-Any other cards won't be displayed
+Note, only the note type (model) called 'Basic' is supported. We assume that is
+has the standard field names 'Front' and 'Back' Any other cards won't be
+displayed
 
 Note on Duplicate detection:
-Android and Desktop apps: detects dupes across the same note type, not the same deck.
-Desktop will allow you to see what the dupes are, ie if they're in a diff deck.
-Android doesn't, though, so you might create dupes there when adding new (empty) cards. That's ok.
-Once you get back to anki-add-cli, and dequeue the empties, the existing card will be detected.
+Android and Desktop apps: detects dupes across the same note type, not the same
+deck. Desktop will allow you to see what the dupes are, ie if they're in a diff
+deck. Android doesn't, though, so you might create dupes there when adding new
+(empty) cards. That's ok. Once you get back to anki-add-cli, and dequeue the
+empties, the existing card will be detected.
 
 """
 
@@ -52,7 +53,8 @@ Once you get back to anki-add-cli, and dequeue the empties, the existing card wi
 # https://apps.ankiweb.net/
 # https://docs.ankiweb.net/searching.html
 # https://docs.rs/regex/1.3.9/regex/#syntax
-# But it unfortunately doesn't help much for the NL words from woorden.org due to the non-consistent format.
+# But it unfortunately doesn't help much for the NL words from woorden.org due
+# to the non-consistent format.
 
 import argparse
 import datetime
@@ -92,11 +94,12 @@ import iso639  # Map e.g. 'de' to 'german', as required by SnowballStemmer
 import pyperclip
 import readchar  # For reading single key-press commands
 
-# The override for `re` is necessary for wildcard searches, due to extra interpolation.
-# Otherwise 're' raises an exception. Search for 'regex' below.
+# The override for `re` is necessary for wildcard searches, due to extra
+# interpolation. # Otherwise 're' raises an exception. Search for 'regex' below.
 # https://learnbyexample.github.io/py_regular_expressions/gotchas.html
 # https://docs.python.org/3/library/re.html#re.sub
-# "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
+# "Unknown escapes of ASCII letters are reserved for future use and treated as
+# errors."
 import regex as re
 
 import unidecode
@@ -327,7 +330,8 @@ def invoke(action, **params):
     https://github.com/FooSoft/anki-connect/
     """
 
-    reqJson = json.dumps( { 'action': action, 'params': params, 'version': 6 } ).encode('utf-8')
+    struct = { 'action': action, 'params': params, 'version': 6 }
+    reqJson = json.dumps(struct).encode('utf-8')
     logging.debug(b'invoke:' + reqJson, stacklevel=2)
     req = request.Request('http://localhost:8765', reqJson)
 
@@ -352,7 +356,11 @@ def invoke(action, **params):
         else:
             return response['result']
     except (ConnectionRefusedError, URLError) as e:
-        msg = 'Failed to connect to Anki. Make sure that Anki is running, and using the anki-connect add-on.'
+        msg = (
+            'Failed to connect to Anki. '
+            'Make sure that Anki is running, '
+            'and using the anki-connect add-on.'
+        )
         logging.warning(msg)
         sys.exit(msg)
 
@@ -365,7 +373,7 @@ def get_deck_names():
 
 
 def renderer(string, query='', *, term='', deck=None):
-    """For displaying (already normalized) definition entries on the terminal/console/CLI"""
+    """For displaying (normalized) definition entries on the console/CLI"""
 
     # Prepend term in canonical format, for display only
     if term:
@@ -400,10 +408,11 @@ def normalizer(string, *, term=None):
     # Remove references like [3], since we probably don't have the footnotes too
     string = re.sub(r'\[\d+\]', '', string)
 
-    # NL-specific (or specific to woorden.org)
-    # Segregate topical category names e.g. 'informeel'
-    # Definitions in plain text cards will often have the tags already stripped out.
+    # NL-specific (or specific to woorden.org).
+    # Segregate topical category names e.g. 'informeel' .
+    # Definitions in plain text will often have the tags already stripped out.
     # So, also use this manually curated list.
+
     # spell-checker:disable
     categories = [
         *[]
@@ -459,19 +468,21 @@ def normalizer(string, *, term=None):
     ]
     # spell-checker:enable
 
-    # If we still have the HTML tags, then we can see if this topic category is new to us.
-    # Optionally, it can then be manually added to the list above.
-    # Otherwise, they wouldn't be detected in old cards, if it's not already in [brackets]
+    # If we still have the HTML tags, then we can see if this topic category is
+    # new to us. Optionally, it can then be manually added to the list above.
+    # Otherwise, they wouldn't be detected in old cards, if it's not already in
+    # [brackets] .
     for match in re.findall(r'<sup>([a-z]+?)</sup>', string) :
         category = match
         # logging.debug(f'{category=}')
         # If this is a known category, just format it as such.
-        # (We're doing a regex match here, since a category name might be a regex.)
+        # (We're doing a regex match here; a category name might be a regex.)
         string = re.sub(r'<sup>(\w+)</sup>', r'[\1]', string)
         if any([ re.search(c, category, re.IGNORECASE) for c in categories ]):
             ...
         else:
-            # Notify, so you can (manually) add this one to the 'categories' list above.
+            # Notify, so you can (manually) add this one to the 'categories'
+            # list above.
             print(f'\nNew category [{COLOR_WARN}{category}{COLOR_RESET}]\n',)
             beep()
             # time.sleep(5)
@@ -486,9 +497,11 @@ def normalizer(string, *, term=None):
     string = re.sub('<span class="Ant">', '\nantonyme: ', string)
     string = re.sub('<span class="Syn">', '\nsynonyme: ', string)
 
-    # Specific to en.thefreedictionary.com (American Heritage® Dictionary of the English Language)
+    # Specific to en.thefreedictionary.com
+    # (American Heritage® Dictionary of the English Language)
     string = re.sub(r'<span class="pron".*?</span>', '', string)
-    # Replace headings that just break up the word into syl·la·bles, since we get that from IPA already
+    # Replace headings that just break up the word into syl·la·bles,
+    # since we get that from IPA already
     string = re.sub(r'<h2>.*?·.*?</h2>', '', string)
     # For each new part-of-speech block
     string = re.sub(r'<div class="pseg">', '\n\n', string)
@@ -500,7 +513,8 @@ def normalizer(string, *, term=None):
     # Remove span/font tags, so that the text can stay on one line
     string = re.sub(r'<span\s+.*?>', '', string)
     string = re.sub(r'<font\s+.*?>', '', string)
-    # These HTML tags <i> <b> <u> <em> are usually used inline and should not have a line break
+    # These HTML tags <i> <b> <u> <em> are usually used inline and should not
+    # have a line break
     string = re.sub(r'<(i|b|u|em)>', '', string)
 
     string = re.sub(r'<br\s*/?>', '\n\n', string)
@@ -533,8 +547,13 @@ def normalizer(string, *, term=None):
     string = re.sub(r'Toon alle vervoegingen', '', string)
     # Remove hover tip on IPA pronunciation
     string = re.sub(r'(?s)<a class="?help"? .*?>', '', string)
-    # Ensure headings begin on their own line (also covers plural forms, eg "Synoniemen")
-    string = re.sub(r'(?m)(?<!^)(Afbreekpatroon|Uitspraak|Vervoeging|Verbuiging|Synoniem|Antoniem)', r'\n\1', string)
+    # Ensure headings begin on their own line
+    # (also covers plural forms, eg "Synoniemen")
+    string = re.sub(
+        r'(?m)(?<!^)(Afbreekpatroon|Uitspraak|Vervoeging|Verbuiging|Synoniem|Antoniem)',
+        r'\n\1',
+        string
+    )
 
     # NL-specific: Newlines (just one) before example `phrases in backticks`
     # (but not *after*, else you'd get single commas on a line, etc)
@@ -560,7 +579,7 @@ def normalizer(string, *, term=None):
     string = re.sub(r'(?m)^\s*(\d+\. +)', r'\n\n\1', string)
     # And sub-definitions, also indented, marked by eg: a) or b)
     string = re.sub(r';?\s+([a-z]\) +)', r'\n  \1', string)
-    # Newline after /Phrases in slashes/ often used a context, if it's the start of the line
+    # Newline after /slashes/ often used as context, if at the start of the line
     string = re.sub(r'(?m)^\s*(/.*?/)\s*', r'\1\n', string)
 
     # Max 2x newlines in a row
@@ -596,7 +615,8 @@ def highlighter(string, query, *, term='', deck=None):
     # not valid in a standard string. (The 'regex' module doesn't.)
     # https://learnbyexample.github.io/py_regular_expressions/gotchas.html
     # https://docs.python.org/3/library/re.html#re.sub
-    # "Unknown escapes of ASCII letters are reserved for future use and treated as errors."
+    # "Unknown escapes of ASCII letters are reserved for future use and treated
+    # as errors."
     query = re.sub(r'[*]', r'[^ ]*', query)
 
     # Terms to highlight
@@ -639,11 +659,17 @@ def highlighter(string, query, *, term='', deck=None):
         # Find given inflections
 
         matches = []
-        # Theoretically, we could not have a double loop here, but this makes it easier to read.
-        # There can be multiple inflections in one line (eg prijzen), so it's easier to have two loops.
-        for inflection in re.findall(r'(?m)^\s*(?:Vervoegingen|Verbuigingen):\s*(.*?)\s*$', string):
-            # There is not always a parenthetical part-of-speech after the inflection of plurals.
-            # Sometimes it's just eol (eg "nederlaag") . So, it ends either with eol $ or open paren (
+        # Theoretically, we could not have a double loop here, but this makes it
+        # easier to read. There can be multiple inflections in one line (eg
+        # prijzen), so it's easier to have two loops.
+        inflections = re.findall(
+            r'(?m)^\s*(?:Vervoegingen|Verbuigingen):\s*(.*?)\s*$',
+            string
+        )
+        for inflection in inflections:
+            # There is not always a parenthetical part-of-speech after the
+            # inflection of plurals. Sometimes it's just eol (eg "nederlaag") .
+            # So, it ends either with eol $ or open paren (
             match = re.findall(r'(?s)(?:\)|^)\s*(.+?)\s*(?:\(|$)', inflection)
             matches += match
 
@@ -653,7 +679,8 @@ def highlighter(string, query, *, term='', deck=None):
             match = re.sub(r'\|', '', match)
 
             # If past participle, remove the 'is' or 'heeft'
-            # Sometimes as eg: uitrusten: 'is, heeft uitgerust' or 'heeft, is uitgerust'
+            # Sometimes as eg:
+            # uitrusten: 'is, heeft uitgerust' or 'heeft, is uitgerust'
             match = re.sub(r'^(is|heeft)(,\s+(is|heeft))?\s+', '', match)
             # And the reflexive portion 'zich' isn't necessary, eg: "begeven"
             match = re.sub(r'\bzich\b', '', match)
@@ -673,7 +700,8 @@ def highlighter(string, query, *, term='', deck=None):
             match = re.sub(r'\s+', ' ', match)
             match = match.strip()
 
-            # Hack stemming for infinitive forms with a consonant change in simple past tense:
+            # Hack stemming for infinitive forms with a consonant change in
+            # simple past tense:
             # dreef => drij(ven) => drij(f)
             # koos => kie(zen) => kie(s)
             if term_or_query.endswith('ven') and match.endswith('f'):
@@ -683,9 +711,11 @@ def highlighter(string, query, *, term='', deck=None):
 
             # Allow separable verbs to be separated, in both directions.
             # ineenstorten => 'stortte ineen'
-            # BUG capture canonical forms that end with known prepositions (make a list)
+            # BUG capture canonical forms that end with known prepositions
+            # (make a list)
             # eg teruggaan op => ging terug op (doesn't work here)
-            # We should maybe just remove the trailing preposition (if it was also a trailing word in the 'front')
+            # We should maybe just remove the trailing preposition
+            # (if it was also a trailing word in the 'front')
             if separable := re.findall(r'^(\S+)\s+(\S+)$', match):
                 # NB, the `pre` is anchored with \b because the prepositions
                 # are short and there would otherwise be many false positive
@@ -758,7 +788,11 @@ def highlighter(string, query, *, term='', deck=None):
         # Just do case-insensitive highlighting.
         # NB, the (?i:...) doesn't create a group.
         # That's why ({highlight}) needs it's own parens here.
-        string = re.sub(f"(?i:({highlight_re}))", COLOR_HIGHLIGHT + r'\1' + COLOR_RESET, string)
+        string = re.sub(
+            f"(?i:({highlight_re}))",
+            COLOR_HIGHLIGHT + r'\1' + COLOR_RESET,
+            string
+        )
 
     return string
 
@@ -777,7 +811,8 @@ def search(term, *, lang):
 
 def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''):
 
-    # If term contains whitespace, either must quote the whole thing, or replace spaces:
+    # If term contains whitespace, either must quote the whole thing, or replace
+    # spaces:
     search_query = re.sub(r' ', '_', query) # For Anki searches
 
     # TODO accent-insensitive search?
@@ -791,7 +826,7 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
     search_terms = [search_query]
 
     # Collapse double letters \p{L} into a disjunction, eg: (NL-specific)
-    # This implies that the user should, when in doubt, use double chars in the query
+    # This implies that the user should, when in doubt, use double chars to search
     # deck:nl (front:maaken OR front:maken)
     # or use a re: (but that doesn't seem to work)
     # BUG: this isn't a proper Combination (maths), so it misses some cases
@@ -813,10 +848,14 @@ def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''
         search_terms = map(lambda x: f'"{field}:{x}"', search_terms)
 
         # Regex search of declinations:
-        # This doesn't really work, since the text in the 'back' field isn't consistent.
-        # Sometimes there's a parenthetical expression after the declination, sometimes not
-        # So, I can''t anchor the end of it, which means it's the same as just a wildcard search across the whole back.
-        # eg 'Verbuigingen.*{term}', and that's not any more specific than just searching the whole back ...
+
+        # This doesn't really work, since the text in the 'back' field isn't
+        # consistent. Sometimes there's a parenthetical expression after the
+        # declination, sometimes not. So, I can't anchor the end of it, which
+        # means it's the same as just a wildcard search across the whole back.
+        # eg 'Verbuigingen.*{term}', and that's not any more specific than just
+        # searching the whole back ...
+
         # if field == 'front' and deck == 'nl':
         #     # Note, Anki needs the term in the query that uses "re:" to be wrapped in double quotes (also in the GUI)
         #     terms = [*terms, f'"back:re:(?s)(Verbuiging|Vervoeging)(en)?:(&nbsp;|\s|<.*?>|heeft|is)*{term}\\b"' ]
@@ -865,26 +904,32 @@ def is_new(card_id):
 
 @functools.lru_cache(maxsize=10)
 def get_unreviewed(deck, ts=None):
-    """If there hasn't been a review today (since midnight), show the count of cards due.
+    """
+    If there hasn't been a review today (since midnight), show the count of
+    cards due.
 
-    This is to stimulate doing a review today, if it has any cards that can be reviewed.
-    This set does not overlap with get_new()
+    This is to stimulate doing a review today, if it has any cards that can be
+    reviewed. This set does not overlap with `get_new()` .
 
-    TODO this seems to wrongly return epoch_review == 0 for hierarchical decks (eg "Python")
+    TODO this seems to wrongly return `epoch_review == 0` for hierarchical decks
+    (eg "Python")
     """
 
     card_ids = []
 
     # Anki uses millisecond epochs
     review_id = invoke('getLatestReviewID', deck=deck)
-    # Convert millisecond epoch to second epoch, truncate milliseconds off the timestamp (which is the review ID)
+    # Convert millisecond epoch to second epoch, truncate milliseconds off the
+    # timestamp (which is the review ID)
     epoch_review = int(review_id/1000)
 
     # Get the (epoch) time at midnight this morning,
     # by converting now to a date (stripping the time off)
     # then converting the date back to to a time
     date_today = datetime.datetime.now().strftime('%Y-%m-%d')
-    epoch_midnight = int(datetime.datetime.strptime(date_today, '%Y-%m-%d').timestamp())
+    epoch_midnight = int(
+        datetime.datetime.strptime(date_today, '%Y-%m-%d').timestamp()
+    )
 
     logging.debug(f"if {epoch_review=} < {epoch_midnight=} : ...")
     if epoch_review < epoch_midnight :
@@ -893,17 +938,21 @@ def get_unreviewed(deck, ts=None):
 
 
 def get_due(deck, ts=None):
-    """"A list of all cards (IDs) due (learning cards before reviewing cards).
+    """"
+    A list of all cards (IDs) due (learning cards before reviewing cards).
 
-    Note, `findCards` returns cards in order of creation (which isn't quite the same as when they're due).
+    Note, `findCards` returns cards in order of creation
+    (which isn't quite the same as when they're due).
 
-    This function ignores whether a review on this deck was already done today (cf. get_unreviewed())
+    This function ignores whether a review on this deck was already done today.
+    cf. `get_unreviewed()`
 
-    The cards due (is:due) are made up of two disjunct sets:
-    * learn(ing) cards:  is:due  is:learn
-    * review(ing) cards: is:due -is:learn
+    The cards due (`is:due`) are made up of two disjunct sets:
+    * learn(ing) cards:  `is:due  is:learn`
+    * review(ing) cards: `is:due -is:learn`
 
-    Note, the ts param is just for cache invalidation, not for querying cards due before a certain date/time.
+    Note, the `ts` param is just for cache invalidation,
+    not for querying cards due before a certain date/time.
     """
 
     learning_ids  = get_learning(deck, ts)
@@ -931,7 +980,10 @@ MATURE_INTERVAL = 365
 # This set does not overlap with get_new() nor get_mid()
 @functools.lru_cache(maxsize=10)
 def get_old(deck, ts=None):
-    card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl>={MATURE_INTERVAL}")
+    card_ids = invoke(
+        'findCards',
+        query=f"deck:{deck} (is:review OR is:learn) prop:ivl>={MATURE_INTERVAL}"
+    )
     return card_ids
 
 
@@ -939,7 +991,10 @@ def get_old(deck, ts=None):
 # # This set does not overlap with get_new() nor get_old()
 # @functools.lru_cache(maxsize=10)
 # def get_mid(deck, ts=None):
-#     card_ids = invoke('findCards', query=f"deck:{deck} (is:review OR is:learn) prop:ivl<{MATURE_INTERVAL}")
+#     card_ids = invoke(
+#         'findCards',
+#         query=f"deck:{deck} (is:review OR is:learn) prop:ivl<{MATURE_INTERVAL}"
+#     )
 #     return card_ids
 
 
@@ -953,7 +1008,13 @@ def get_empty(deck, ts=None):
 def get_deck_stats(decks=None, *, ts=None):
     decks = decks or get_deck_names()
     r = invoke('getDeckStats', decks=decks)
-    d = { r[id]['name']: { 'new':r[id]['new_count'],'learn':r[id]['learn_count'],'review':r[id]['review_count'],  } for id in r }
+    d = {
+        r[id]['name']: {
+            'new':r[id]['new_count'],
+            'learn':r[id]['learn_count'],
+            'review':r[id]['review_count'],
+        } for id in r
+    }
     return d
 
 
@@ -977,7 +1038,7 @@ def is_due(card_id):
     Does not include new cards.
     cf. is_new(card_id)
 
-    Based on the `is:due` query, which seems to differ from the `areDue` API call.
+    Based on the `is:due` query, which seems to differ from the `areDue` API.
     The `is:due` query seems to return cards due later today, but not due now.
     The `areDue` seems to hide cards due later today, but not due now.
 
@@ -1028,7 +1089,7 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     query_term = parse.quote(term) # For web searches
     url = url + query_term
     logging.info(url)
-    # TODO factor this out into an on-screen status() func or something (curses?)
+    # TODO factor this out into an on-screen status() func (curses?)
     clear_line()
     print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
 
@@ -1049,7 +1110,10 @@ def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     # &copy:       http://www.woorden.org/woord/zien
     # Bron:        http://www.woorden.org/woord/glashelder
 
-    match = re.search(f"(?s)(<h[1-9].*?{term}.*?)(?=&copy|Bron:|<div|</div)", content)
+    match = re.search(
+        f"(?s)(<h[1-9].*?{term}.*?)(?=&copy|Bron:|<div|</div)",
+        content
+    )
     if not match:
         logging.info(term + ": No match in HTML document")
         return
@@ -1078,8 +1142,8 @@ def search_thefreedictionary(term, *, lang):
             logging.warning(response)
             return
 
-        # NB urllib raises an exception on 404 pages.
-        # The content of the 404 page (eg spellchecker suggestions) is in the Error.
+        # NB urllib raises an exception on 404 pages. The content of the 404
+        # page (eg spellchecker suggestions) is in the Error.
         content = response.read().decode('utf-8')
         # Parse out spellcheck suggestions via CSS selector: .suggestions a
         soup = bs4.BeautifulSoup(content, 'html.parser')
@@ -1098,7 +1162,8 @@ def search_thefreedictionary(term, *, lang):
     # Remove citations, just to keep Anki cards terse
     definition = re.sub('<div class="cprh">.*?</div>', '', definition)
 
-    # Get pronunciation (the IPA version) via Kerneman/Collins (multiple languages), and prepend it
+    # Get pronunciation (the IPA version) via Kerneman/Collins (multiple
+    # languages), and prepend it.
     match = re.search(' class="pron">(.*?)</span>', content)
     if match:
         ipa_str = '[' + match.group(1) + ']'
@@ -1152,12 +1217,13 @@ def add_card(term, definition=None, *, deck):
 def answer_card(card_id, ease: int):
     """Review this card and set ease. 1: Again/New, 2: Hard, 3: Good, 4: Easy
     """
-    # Note, functools.lru_cache doesn't allow removing single items from the cache
+    # Note, functools.lru_cache doesn't allow removing single items
     get_card.cache_clear()
     get_new.cache_clear()
     get_learning.cache_clear()
     get_reviewing.cache_clear()
     get_unreviewed.cache_clear()
+    get_deck_stats.cache_clear()
     invoke('answerCards', answers=[{'cardId': card_id, 'ease': ease}])
 
 
@@ -1193,22 +1259,17 @@ def editor(content_a: str='', /) -> str:
     Note, this does not call normalizer() automatically
     """
 
-    # with tempfile.NamedTemporaryFile(mode='w+t', suffix=".tmp", delete=False) as tf:
-    temp_file_name = '/tmp/' + os.path.basename(__file__).removesuffix('.py') + '.tmp'
-    # try:
-    #     os.unlink(temp_file_name)
-    # except:
-    #     pass
-    with open(temp_file_name, 'w') as tf:
+    tf_name = '/tmp/' + os.path.basename(__file__).removesuffix('.py') + '.tmp'
+    with open(tf_name, 'w') as tf:
         tf.write(content_a)
         # temp_file_name = tf.name
 
     # The split() is necessary because $EDITOR might contain multiple words
-    subprocess.call(os.getenv('EDITOR', 'nano').split() + [temp_file_name])
+    subprocess.call(os.getenv('EDITOR', 'nano').split() + [tf_name])
 
-    with open(temp_file_name, 'r') as tf:
+    with open(tf_name, 'r') as tf:
         content_b = tf.read()
-    os.unlink(temp_file_name)
+    os.unlink(tf_name)
     return content_b
 
 
@@ -1247,7 +1308,9 @@ def wrapper(string, indent=' ' * 4):
 
     lines_wrapped = []
     for line in string.splitlines():
-        line_wrap = textwrap.wrap(line, WRAP_WIDTH, replace_whitespace=False, drop_whitespace=True)
+        line_wrap = textwrap.wrap(
+            line, WRAP_WIDTH, replace_whitespace=False, drop_whitespace=True
+        )
         line_wrap = line_wrap or ['']
         lines_wrapped += line_wrap
     string = f"\n{indent}".join(lines_wrapped)
@@ -1303,7 +1366,9 @@ def clear_screen():
 
 
 def scroll_screen():
-    """Scrolls previous content off the visible screen, retaining scroll buffer."""
+    """
+    Scrolls previous content off the visible screen, retaining scroll buffer.
+    """
     print("\n" * os.get_terminal_size().lines)
 
 
@@ -1317,8 +1382,11 @@ def scroll_screen_to_menu(content="", line_pos=None):
     if not line_pos:
         line_pos = 1 + len(re.findall("\n", content))
 
-    # eg screen height is 10, already text like "hey\nthere" printed (so 2 lines, since it'll have a final \n)
-    # Menu will take 2 at the bottom, so, we need 6 more lines printed with end=''
+    # Example:
+    # screen height is 10,
+    # already printed "hey\nthere" (so 2 lines, since it'll have a final \n)
+    # Menu will take 2 at the bottom
+    # So, we need 6 more lines printed, with end=''
     OFFSET = 2
 
     # Remaining newlines to be scrolled down
@@ -1350,7 +1418,8 @@ def main(deck):
     card_id = None
     card = None
 
-    # Across the deck, the number(s) of wildcard matches on the front/back of other cards
+    # Across the deck, the number(s) of wildcard matches on the front/back of
+    # other cards
     wild_n = None
 
     # The content/definition of the current (locally/remotely) found card
@@ -1376,7 +1445,8 @@ def main(deck):
         clear_screen()
         key = None
 
-        # Testing if the content from the Anki DB differs from the rendered content
+        # Testing if the content from the Anki DB differs from the rendered
+        # content
         updatable = False
         normalized = ''
         card_id = None
@@ -1399,18 +1469,26 @@ def main(deck):
             front = (card_ids and card['fields']['Front']['value']) or term or ''
             normalized = renderer(normalized, term, term=front, deck=deck)
 
-            # If this card is due, prompt to review, don't reveal the content until keypress
-            # Ignore new/unseen cards here, because new cards are lower priority than (over-)due reviews.
-            # (But we can still enable the menu item to review new cards below ...)
+            # If this card is due, prompt to review, don't reveal the content
+            # until keypress. Ignore new/unseen cards here, because new cards
+            # are lower priority than (over-)due reviews. (But we can still
+            # enable the menu item to review new cards below ...)
             if not options.scroll and card_id and is_due(card_id):
-                # TODO factor this out into eg review_card() or review_term() or something
+                # TODO factor this out into eg review_card() or review_term()
                 print(renderer('', term=front))
-                print(wrapper(COLOR_INFO + 'Review?\n' + COLOR_COMMAND + '[Press any key]' + COLOR_RESET))
+                print(wrapper(''.join([
+                    COLOR_INFO,
+                    'Review?\n',
+                    COLOR_COMMAND,
+                    '[Press any key]',
+                    COLOR_RESET,
+                ])))
                 scroll_screen_to_menu(line_pos=5)
-                # Push reviewed cards onto readline history, if it wasn't already the search term
+                # Push reviewed cards onto readline history, if it wasn't
+                # already the search term
                 if term != front:
                     readline.add_history(front)
-                # Wait, so user has time to think about the def, before seeing it
+                # Wait, so user has time to think about it, before seeing it
                 try:
                     key = readchar.readkey()
                 except (KeyboardInterrupt) as e:
@@ -1422,14 +1500,16 @@ def main(deck):
                     # Reset, for the readkey loop below
                     key = None
 
-        # If --auto-scroll (ie when using --auto-update), no need to print every definition along the way
+        # If --auto-scroll (ie when using --auto-update), no need to print every
+        # definition along the way
         if not options.scroll :
             with autopage.AutoPager() as out:
                 print(normalized, file=out)
 
         line_pos = 0
         if content:
-            line_pos = 1 + len(re.findall("\n", normalized)) # +1 because of default end='\n'
+            # +1 because of default end='\n'
+            line_pos = 1 + len(re.findall("\n", normalized))
         elif term:
             hr()
             # TODO factor this out into status() func or something (curses?)
@@ -1488,11 +1568,11 @@ def main(deck):
         # TODO consider disabling auto-sync if auto-scroll is enabled ?
         sync_thresh_edits = 10
         sync_thresh_secs = 60 * 60
-        if  0  \
-            or  int(time.time()) > sync_last_epoch + sync_thresh_secs \
-            or (int(time.time()) > sync_last_epoch + sync_thresh_secs//10 and edits_n) \
-            or edits_n > sync_thresh_edits \
-            :
+        if (0
+            or  int(time.time()) > sync_last_epoch + sync_thresh_secs
+            or (int(time.time()) > sync_last_epoch + sync_thresh_secs//10 and edits_n)
+            or edits_n > sync_thresh_edits
+        ):
             sync()
             sync_last_epoch = int(time.time())
             edits_n = 0
@@ -1512,7 +1592,9 @@ def main(deck):
         #     menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
 
         if empty_ids := deck and get_empty(deck):
-            menu += [ "E(m)pties:" + COLOR_WARN + str(len(empty_ids)) + COLOR_RESET ]
+            menu += [
+                "E(m)pties:" + COLOR_WARN + str(len(empty_ids)) + COLOR_RESET
+            ]
 
         menu += [ '│' ]
 
@@ -1520,9 +1602,12 @@ def main(deck):
             card_ids_n = len(card_ids)
             # Variable-width display, based on how many cards found
             digits = 1+int(math.log10(card_ids_n))
-            menu += [
-                # Display index in 1-based counting
-                "(N)/(P):" + COLOR_VALUE + f"{card_ids_i+1:{digits}d}/{card_ids_n}" + COLOR_RESET,
+            # Display index in 1-based counting
+            menu += [ ''
+                + "(N)/(P):"
+                + COLOR_VALUE
+                + f"{card_ids_i+1:{digits}d}/{card_ids_n}"
+                + COLOR_RESET
             ]
 
         if term:
@@ -1534,7 +1619,13 @@ def main(deck):
             ]
 
             if wild_n:
-                menu += [ f"(W)ilds:" + COLOR_VALUE + str(wild_n) + COLOR_RESET + ' more' ]
+                menu += [ ''
+                    + f"(W)ilds:"
+                    + COLOR_VALUE
+                    + str(wild_n)
+                    + COLOR_RESET
+                    + ' more'
+                ]
 
         # spell-checker:enable
 
@@ -1593,7 +1684,8 @@ def main(deck):
         elif key == 'l':
             # Clear screen/card/search
             clear_screen()
-            # TODO this needs to be wrapped in a resultset that can be cleared in one command
+            # TODO this needs to be wrapped in a resultset that can be cleared
+            # in one command
             term = ''
             card_id = None
             card_ids = []
@@ -1606,7 +1698,8 @@ def main(deck):
             # Switch deck
             clear_screen()
 
-            # TODO this needs to be wrapped in a resultset that can be cleared in one command
+            # TODO this needs to be wrapped in a resultset that can be cleared
+            # in one command
             term = ''
             card_id = None
             card_ids = []
@@ -1619,8 +1712,18 @@ def main(deck):
 
             stats = get_deck_stats(ts=time.time()//60)
 
-            # TODO factor out the rendering of table with headings and columns (auto-calculate widths)
-            print(' ' * 13, YELLOW_N, BLUE_N, f'{"N":>4s}', RED_N, f'{"L":>3s}', GREEN_N, f'{"R":>3s}', sep=' ')
+            # TODO factor out the rendering of table with headings and columns
+            # (auto-calculate widths)
+            print(' ' * 13,
+                  YELLOW_N,
+                  BLUE_N,
+                  f'{"N":>4s}',
+                  RED_N,
+                  f'{"L":>3s}',
+                  GREEN_N,
+                  f'{"R":>3s}',
+                  sep=' ',
+            )
             for dn in decks:
                 # This is a bit too slow:
                 # empty_n = len(get_empty(dn, ts=time.time()//3600))
@@ -1630,13 +1733,14 @@ def main(deck):
                 review_n = stats[dn]['review']
 
                 print('* ', COLOR_COMMAND, f'{dn:10s}', end=' ')
-                # print(YELLOW_N if empty_n > 0 else GRAY_N, f'{empty_n:3d}', end=' ')
                 print(BLUE_N if new_n > 0 else GRAY_N, f'{new_n:4d}', end=' ')
                 print(RED_N if learn_n > 0 else GRAY_N, f'{learn_n:3d}', end=' ')
                 print(GREEN_N if review_n > 0 else GRAY_N, f'{review_n:3d}', end=' ')
 
-                # Draw a histogram to emphasize the count of due cards, as a per mille ‰
                 # TODO factor out the scaling and tick marks drawing
+
+                # Draw a histogram to emphasize the count of due cards, as a per
+                # mille ‰
                 width = os.get_terminal_size().columns - 35
                 scale = 1000
                 due_n = int( (learn_n+review_n) * width / scale )
@@ -1644,7 +1748,13 @@ def main(deck):
                 mod   = int( 100 * width / scale )
                 quot = due_n // mod
                 rem = due_n % mod
-                print(COLOR_RESET, '|', ('─' * (mod-1) + '|') * quot, '─' * rem, sep='')
+                print(
+                    COLOR_RESET,
+                    '|',
+                    ('─' * (mod-1) + '|') * quot,
+                    '─' * rem,
+                    sep=''
+                )
 
             scroll_screen_to_menu(line_pos=len(decks)+1)
             sync()
@@ -1654,16 +1764,17 @@ def main(deck):
             # Block autocomplete of dictionary words while choosing a deck,
             # since we want to limit it to deck names
             options.deck = None
-            # Push deck names onto readline history stack, for ability to autocomplete,
-            # and to be able to Ctrl-P to just scroll up through the list
+            # Push deck names onto readline history stack, for ability to
+            # autocomplete, and to be able to Ctrl-P to just scroll up through
+            # the list.
             hist_len_pre = readline.get_current_history_length()
             for d in decks:
                 readline.add_history(d)
 
             try:
                 selected = input("Switch to deck: ")
-                # Remove any leading slash
-                # cf. the Anki GUI; that's how you start a review from the decks view
+                # Remove any leading slash.
+                # cf. the Anki GUI; that's how you start a review
                 selected = selected.strip()
                 selected = selected.lstrip('/')
                 if not selected:
@@ -1683,7 +1794,8 @@ def main(deck):
                 beep()
                 continue
             deck = selected
-            # This is so that `completer()` can know what lang/deck we're using for future word autocompletions
+            # This is so that `completer()` can know what lang/deck we're using
+            # for future word autocompletions
             options.deck = deck
 
             # scroll_screen()
@@ -1701,9 +1813,9 @@ def main(deck):
             else:
                 beep()
         elif key == 'b' and term:
-            # Open Anki GUI Card browser/list,
-            # for the sake of editing/custom searches
-            # If there's a term, also append it, so that it'll (likely) be the first result
+            # Open Anki GUI Card browser/list, for the sake of editing/custom
+            # searches. If there's a term, also append it, so that it'll
+            # (likely) be the first result.
             search_anki(term, deck=deck, field='front', browse=True, term=card and card['fields']['Front']['value'])
         elif key == 'e' and card_id:
             # invoke('guiEditNote', note=card_to_note(card_id))
@@ -1760,7 +1872,8 @@ def main(deck):
                 hr()
                 print(renderer(normalized, front, term=front, deck=deck))
 
-                # print a diff to make it easier to see if any important customizations would be lost
+                # print a diff to make it easier to see if any important
+                # customizations would be lost
                 hr()
                 diff_lines = list(difflib.Differ().compare(content_old.splitlines(),normalized.splitlines()))
                 for i in range(len(diff_lines)) :
@@ -1770,13 +1883,21 @@ def main(deck):
                 print(*diff_lines, sep='\n')
 
                 try:
-                    prompt = "\nReplace " + COLOR_COMMAND + front + COLOR_RESET + " with this definition? [N]/y: "
+                    prompt = (''
+                        + "\nReplace "
+                        + COLOR_COMMAND
+                        + front
+                        + COLOR_RESET
+                        + " with this definition? [N]/y: "
+                    )
                     reply = input(prompt)
                 except:
                     reply = None
                 if reply:
                     # Don't litter readline history with 'y' and 'n'
-                    readline.remove_history_item(readline.get_current_history_length() - 1)
+                    readline.remove_history_item(
+                        readline.get_current_history_length() - 1
+                    )
                     if reply.casefold() == 'y':
                         update_card(card_id, back=normalized)
                         edits_n += 1
@@ -1795,7 +1916,11 @@ def main(deck):
             # And search it to verify
             card_ids = search_anki(term, deck=deck)
             card_ids_i = 0
-        elif key in ('1','2','3','4') and card_id and (is_due(card_id) or is_new(card_id)):
+        elif (True
+            and key in ('1','2','3','4')
+            and card_id
+            and (is_due(card_id) or is_new(card_id))
+        ):
             answer_card(card_id, int(key))
             edits_n += 1
             # Auto-advance
@@ -1815,8 +1940,9 @@ def main(deck):
             readline.add_history(term)
 
             # Already have this card in this deck, duplicate ?
-            # BUG this should be an exact search. Implement that flag. Other callers need it too?
             if card_ids := search_anki(term, deck=deck) :
+                # BUG this should be an exact search. Implement that flag. Other
+                # callers need it too?
                 card_ids_i = 0
                 continue
 
@@ -1828,9 +1954,15 @@ def main(deck):
             # If any, suggestions/content printed on next iteration.
 
             if content:
-                # TODO factor this out into eg review_card() or review_term() or something
+                # TODO factor this out into eg review_card() or review_term()
                 print(renderer('', term=term))
-                print(wrapper(COLOR_INFO + 'Review?\n' + COLOR_COMMAND + '[Press any key]' + COLOR_RESET))
+                print(wrapper(''
+                    + COLOR_INFO
+                    + 'Review?\n'
+                    + COLOR_COMMAND
+                    + '[Press any key]'
+                    + COLOR_RESET
+                ))
                 scroll_screen_to_menu(line_pos=5)
                 key = readchar.readkey()
 
@@ -1838,7 +1970,10 @@ def main(deck):
             term = ''
             content = None
             # If no cards are due, allow reviewing of new cards, if any
-            card_ids = get_due(deck, ts=time.time()//3600) or get_new(deck, ts=time.time()//3600)
+            card_ids = ([]
+                or get_due(deck, ts=time.time()//3600)
+                or get_new(deck, ts=time.time()//3600)
+            )
             card_ids_i = 0
         elif key in ('s', Key.CTRL_P, Key.UP):
             # Exact match search
@@ -1857,10 +1992,10 @@ def main(deck):
                 card_ids = []
                 continue
 
-            # Allow to switch deck and search in one step, via a namespace-like search.
-            # (Assumes that deck names are 2-letter language codes)
-            # e.g. 'nl:zien' would switch deck to 'nl' first, and then search for 'zien'.
-            # Also allow separators [;/:] to obviate pressing Shift
+            # Allow to switch deck and search in one step, via a namespace-like
+            # search. (Assumes that deck names are 2-letter language codes.)
+            # e.g. 'nl:zien' would switch deck to 'nl' first, and then search
+            # for 'zien'. Also allow separators [;/:] to obviate pressing Shift.
             decks_re = '|'.join(decks := get_deck_names())
             if match := re.match('\s*([a-z]{2})\s*[/]\s*(.*)', term):
                 lang, term = match.groups()
@@ -1872,10 +2007,12 @@ def main(deck):
             card_ids = search_anki(term, deck=deck)
             card_ids_i = 0
             # Check other possible query types:
-            # TODO do all the searches (by trying to minimise exact and wildcard into one request)
+            # TODO: Do all the searches (by trying to minimise exact and wildcard into one request).
             # eg 'wild_n' will always contain the exact match, if there is one, so it's redundant
 
-            wild_n = len(set(search_anki(term, deck=deck, field=None)) - set(card_ids))
+            wild_n = len(
+                set(search_anki(term, deck=deck, field=None)) - set(card_ids)
+            )
             if not card_ids: # and not wild_n:
                 # Fetch (automatically when no local matches)
                 card_id = None
@@ -1897,9 +2034,12 @@ def main(deck):
         else:
             logging.debug(f'Unknown command: {key}')
             # Unrecognized command.
-            # TODO add a '?' function that programmatically lists available shortcuts (if they're available in a dict)
             beep()
-            # TODO could set a flag here to skip (re-)rendering the next round, since redundant
+            # TODO add a '?' function that programmatically lists available
+            # shortcuts (if they're available in a dict)
+
+            # TODO could set a flag here to skip (re-)rendering the next round,
+            # since redundant
 
 
 def completer(text: str, state: int) -> Optional[str]:

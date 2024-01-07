@@ -1007,15 +1007,15 @@ def get_empty(deck, ts=None):
 @functools.lru_cache
 def get_deck_stats(decks=None, *, ts=None):
     decks = decks or get_deck_names()
-    r = invoke('getDeckStats', decks=decks)
-    d = {
-        r[id]['name']: {
-            'new':r[id]['new_count'],
-            'learn':r[id]['learn_count'],
-            'review':r[id]['review_count'],
-        } for id in r
+    response = invoke('getDeckStats', decks=decks)
+    stats = {
+        response[deck_name]['name']: {
+            'new'    :response[deck_name]['new_count'],
+            'learn'  :response[deck_name]['learn_count'],
+            'review' :response[deck_name]['review_count'],
+        } for deck_name in response
     }
-    return d
+    return stats
 
 
 def are_due(card_ids):
@@ -1347,6 +1347,7 @@ def sync():
     # And in case we want to sync reviews done elsewhere:
     get_learning.cache_clear()
     get_reviewing.cache_clear()
+    get_deck_stats.cache_clear()
 
     # These will expire in time ... can also just reload the script with key '.'
     # get_new.cache_clear()
@@ -1582,14 +1583,28 @@ def main(deck):
         # else:
         #     menu += [ ' ' ]
 
-        if n_old := deck and len(get_old(deck, ts=time.time()//3600)) :
-            menu += [ "mature:" + COLOR_VALUE + str(n_old) + COLOR_RESET ]
+        # if n_old := deck and len(get_old(deck, ts=time.time()//3600)) :
+        #     menu += [ "mature:" + COLOR_VALUE + str(n_old) + COLOR_RESET ]
         # if n_mid := deck and len(get_mid(deck, ts=time.time()//3600)) :
         #     menu += [ "young:"  + COLOR_VALUE + str(n_mid) + COLOR_RESET ]
-        if n_due := deck and len(get_unreviewed(deck, ts=time.time()//3600)) :
-            menu += [ "Re(v)iew:"    + COLOR_VALUE + str(n_due) + COLOR_RESET ]
+        # if n_due := deck and len(get_unreviewed(deck, ts=time.time()//3600)) :
+        #     menu += [ "Re(v)iew:"    + COLOR_VALUE + str(n_due) + COLOR_RESET ]
         # if n_new := deck and len(get_new(deck, ts=time.time()//3600)) :
         #     menu += [ "new:" + COLOR_VALUE + str(n_new) + RESET ]
+
+        stats = get_deck_stats(ts=time.time()//60)
+        if deck:
+            new_n = stats[deck]['new']
+            learn_n = stats[deck]['learn']
+            review_n = stats[deck]['review']
+            if learn_n or review_n :
+                menu += [ ''
+                    + "Re(v)iew: "
+                    + (BLUE_L if new_n > 0 else GRAY_N) + f'{new_n:4d}'
+                    + (RED_N if learn_n > 0 else GRAY_N) + f'{learn_n:4d}'
+                    + (GREEN_N if review_n > 0 else GRAY_N) + f'{review_n:4d}'
+                    + COLOR_RESET
+                ]
 
         if empty_ids := deck and get_empty(deck):
             menu += [
@@ -1710,13 +1725,11 @@ def main(deck):
 
             decks = get_deck_names()
 
-            stats = get_deck_stats(ts=time.time()//60)
-
             # TODO factor out the rendering of table with headings and columns
             # (auto-calculate widths)
             print(' ' * 13,
                   YELLOW_N,
-                  BLUE_N,
+                  BLUE_L,
                   f'{"N":>4s}',
                   RED_N,
                   f'{"L":>3s}',
@@ -1728,12 +1741,13 @@ def main(deck):
                 # This is a bit too slow:
                 # empty_n = len(get_empty(dn, ts=time.time()//3600))
 
+                # TODO this is duplicated above, factor out the string(s) for counting/displaying count of new/learn/review
                 new_n = stats[dn]['new']
                 learn_n = stats[dn]['learn']
                 review_n = stats[dn]['review']
 
                 print('* ', COLOR_COMMAND, f'{dn:10s}', end=' ')
-                print(BLUE_N if new_n > 0 else GRAY_N, f'{new_n:4d}', end=' ')
+                print(BLUE_L if new_n > 0 else GRAY_N, f'{new_n:4d}', end=' ')
                 print(RED_N if learn_n > 0 else GRAY_N, f'{learn_n:3d}', end=' ')
                 print(GREEN_N if review_n > 0 else GRAY_N, f'{review_n:3d}', end=' ')
 

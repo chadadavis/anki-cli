@@ -1188,7 +1188,7 @@ def get_card(id):
 
     cardsInfo = invoke('cardsInfo', cards=[id])
     card = cardsInfo[0]
-    logging.info(f"Model/Note type:" + card['modelName'])
+    logging.debug(f"Model/Note type:" + card['modelName'])
     if card['modelName'] != 'Basic' :
         return
     return card
@@ -1893,7 +1893,7 @@ def main(deck):
                     logging.warning("Normalizer not idempotent")
 
                 if content_old == normalized :
-                    logging.info("Identical to origin (normalized)")
+                    logging.debug("Identical to origin (normalized)")
                     continue
 
                 hr()
@@ -2119,6 +2119,12 @@ if __name__ == "__main__":
         "Name of Anki deck to use (must be a 2-letter language code, e.g. 'en')",
     )
     parser.add_argument(
+        '-l',
+        "--level",
+        help=
+        "Logging level, eg: [deb(ug), info, warn(ing), err(or), crit(ical)]",
+    )
+    parser.add_argument(
         '-d',
         "--debug",
         action='store_true',
@@ -2141,10 +2147,17 @@ if __name__ == "__main__":
 
     options.debug = options.debug or bool(sys.gettrace())
 
-    log_level = (options.debug and logging.DEBUG) or logging.WARNING
+    # Logging level and defaults
+    options.level = options.level or (options.debug and 'DEBUG') or 'WARNING'
+    # Allow for prefix-matching too, eg deb => DEBUG, crit => CRITICAL, etc
+    levels = logging.getLevelNamesMapping()
+    for level_str in levels:
+        if level_str.startswith(options.level.upper()):
+            options.level = level_str
+    level_int = levels.get(options.level, levels['WARNING'])
     logging.basicConfig(filename=__file__ + '.log',
                         filemode='w',
-                        level=log_level,
+                        level=level_int,
                         format=f'%(asctime)s %(levelname)-8s %(lineno)4d %(funcName)-20s %(message)s'
                         )
     logging.info('\n')

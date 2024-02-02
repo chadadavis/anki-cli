@@ -1428,6 +1428,9 @@ def main(deck):
     card_id = None
     card = None
 
+    # Is the current result set a review (else it's a search result)
+    is_reviewing = False
+
     # Across the deck, the number(s) of wildcard matches on the front/back of
     # other cards
     wild_n = None
@@ -1483,7 +1486,7 @@ def main(deck):
             # until keypress. Ignore new/unseen cards here, because new cards
             # are lower priority than (over-)due reviews. (But we can still
             # enable the menu item to review new cards below ...)
-            if not options.scroll and card_id and is_due(card_id):
+            if not options.scroll and card_id and (is_due(card_id) or (is_reviewing and is_new(card_id))):
                 # TODO factor this out into eg review_card() or review_term()
                 print(renderer('', term=front))
                 print(wrapper(''.join([
@@ -1563,7 +1566,7 @@ def main(deck):
             menu += [ "(R)eplace" ]
 
             # if is_due(card_id) or is_new(card_id):
-            if is_due(card_id) :
+            if is_due(card_id) or (is_reviewing and is_new(card_id)):
                 menu += [ '(1-4) ' + COLOR_WARN + '?' + COLOR_RESET]
                 # menu += [ f"{card['interval']:5d} d" ]
             else:
@@ -1605,7 +1608,7 @@ def main(deck):
             new_n = stats[deck]['new']
             learn_n = stats[deck]['learn']
             review_n = stats[deck]['review']
-            if learn_n or review_n :
+            if is_reviewing or learn_n or review_n :
                 menu += [ ''
                     + "Re(v)iew: "
                     + (BLUE_L if new_n > 0 else GRAY_N) + f'{new_n:4d}'
@@ -1693,6 +1696,8 @@ def main(deck):
         #         card_ids_i += 1
         #     case 'p' | 'N' if card_ids_i > 0:
         #         card_ids_i -= 1
+
+        is_reviewing = False
 
         if key in ('x', 'q', Key.ESC_ESC) :
             clear_line()
@@ -1948,6 +1953,7 @@ def main(deck):
             # Auto-advance
             if card_ids_i < len(card_ids) - 1:
                 card_ids_i += 1
+            is_reviewing = True
         elif key == 'm' and empty_ids:
             card_id = empty_ids[0]
             term = get_card(card_id)['fields']['Front']['value']
@@ -1997,6 +2003,7 @@ def main(deck):
                 or get_new(deck, ts=time.time()//3600)
             )
             card_ids_i = 0
+            is_reviewing = True
         elif key in ('s', Key.CTRL_P, Key.UP):
             # Exact match search
 

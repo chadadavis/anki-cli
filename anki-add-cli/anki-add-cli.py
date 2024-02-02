@@ -194,12 +194,13 @@ def backlog():
 # And then define types for defs
 
 # Consider adding a GPT command/prompt to ask adhoc questions about this / other cards ?
+# Also when no results found.
 # Could use the embeddings to find synonyms, for example
 # Might have to use stop tokens to limit the response to one line ?
 # Or rather than customize it for one service, make a command (!) to pipe to a shell command
 # Doesn't vim also have something like that?
 # And save the last command in readline (or read from bash history?)
-# Then use the chatgpt.py script to receive content piped in, along with a Qestion on the CLI
+# Then use the chatgpt.py script to receive content piped in, along with a question on the CLI
 # Make sure to also include the term (since it's not part of the def content)
 
 # TODO
@@ -1740,14 +1741,15 @@ def main(deck):
 
             # TODO factor out the rendering of table with headings and columns
             # (auto-calculate widths)
-            print(' ' * 13,
+            print(' ' * 14,
                   YELLOW_N,
                   BLUE_L,
                   f'{"N":>4s}',
-                  RED_N,
-                  f'{"L":>3s}',
                   GREEN_N,
                   f'{"R":>3s}',
+                  RED_N,
+                  f'{"L":>3s}',
+                  COLOR_RESET,
                   sep=' ',
             )
             for dn in decks:
@@ -1759,16 +1761,15 @@ def main(deck):
                 learn_n = stats[dn]['learn']
                 review_n = stats[dn]['review']
 
-                print('* ', COLOR_COMMAND, f'{dn:10s}', end=' ')
+                print('* ', COLOR_COMMAND, f'{dn:11s}', end=' ')
                 print(BLUE_L if new_n > 0 else GRAY_N, f'{new_n:4d}', end=' ')
-                print(RED_N if learn_n > 0 else GRAY_N, f'{learn_n:3d}', end=' ')
                 print(GREEN_N if review_n > 0 else GRAY_N, f'{review_n:3d}', end=' ')
+                print(RED_N if learn_n > 0 else GRAY_N, f'{learn_n:3d}', end=' ')
 
                 # TODO factor out the scaling and tick marks drawing
 
-                # Draw a histogram to emphasize the count of due cards, as a per
-                # mille ‰
-                width = os.get_terminal_size().columns - 35
+                # Draw a histogram to emphasize the count of due cards, as a per mille ‰
+                width = 100
                 scale = 1000
                 due_n = int( (learn_n+review_n) * width / scale )
                 # For tick marks on the axis:

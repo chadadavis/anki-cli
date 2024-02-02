@@ -402,10 +402,19 @@ def normalizer(string, *, term=None):
     # Replace HTML entities with unicode chars (for IPA symbols, etc)
     string = html.unescape(string)
 
-    # Remove tags that are usually in the phonetic markup
+    # Remove tags that are usually inside the IPA/phonetic markup
     string = re.sub(r'</?a\s+.*?>', '', string)
 
-    # Remove references like [3], since we probably don't have the footnotes too
+    # Replace IPA stress marks that are not commonly represented in fonts.
+    # IPA Primary Stress Mark   (Unicode U+02C8) ie the [ˈ] character => apostrophe [']
+    # IPA Secondary Stress Mark (Unicode U+02CC) ie the [ˌ] character => comma [,]
+    # IPA Long vowel length     (Unicode U+02D0) ie the [ː] character => colon [:]
+    # eg for the NL word "apostrof", change the IPA: [ ˌapɔsˈtrɔf ] => [ ,apɔs'trɔf ]
+    string = re.sub(r'\u02C8', "'", string)
+    string = re.sub(r'\u02CC', ",", string)
+    string = re.sub(r'\u02D0', ":", string)
+
+    # Remove numeric references like [3]; we probably don't have the footnotes anyway
     string = re.sub(r'\[\d+\]', '', string)
 
     # NL-specific (or specific to woorden.org).
@@ -514,7 +523,7 @@ def normalizer(string, *, term=None):
     string = re.sub(r'<span\s+.*?>', '', string)
     string = re.sub(r'<font\s+.*?>', '', string)
     # These HTML tags <i> <b> <u> <em> are usually used inline and should not
-    # have a line break
+    # have a line break (below, we replace remaining tags with \n ...)
     string = re.sub(r'<(i|b|u|em)>', '', string)
 
     string = re.sub(r'<br\s*/?>', '\n\n', string)
@@ -1163,7 +1172,7 @@ def search_thefreedictionary(term, *, lang):
     definition = re.sub('<div class="cprh">.*?</div>', '', definition)
 
     # Get pronunciation (the IPA version) via Kerneman/Collins (multiple
-    # languages), and prepend it.
+    # languages), and prepend it, in [brackets].
     match = re.search(' class="pron">(.*?)</span>', content)
     if match:
         ipa_str = '[' + match.group(1) + ']'
@@ -1566,8 +1575,7 @@ def main(deck):
 
         # Check for incoming changes periodically.
         # But push outgoing changes sooner, since we know if any are pending.
-        # TODO consider disabling auto-sync if auto-scroll is enabled ?
-        sync_thresh_edits = 10
+        sync_thresh_edits = 10 if not options.scroll else float('inf')
         sync_thresh_secs = 60 * 60
         if (0
             or  int(time.time()) > sync_last_epoch + sync_thresh_secs

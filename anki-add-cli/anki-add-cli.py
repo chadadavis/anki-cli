@@ -116,7 +116,8 @@ def backlog():
 # https://ankiweb.net/shared/info/1587955871
 # But, What about Android? Can just add the duplicate, and let this script figure it out later when dequeueing empties ...
 
-# Add support for wiktionary? (IPA?) ?
+# Add support for wiktionary?
+# (But doesn't always have IPA?) ?
 # Note that the web site searches across languages. How to restrict to a given lang?
 # eg via ? https://github.com/Suyash458/WiktionaryParser
 
@@ -1087,7 +1088,7 @@ def launch_url(url):
 
 
 def search_google(term):
-    # Because I might also want to use the term to search other sites too
+    # Copy to clipboard; I might also want to use the term to search other sites too
     pyperclip.copy(term)
 
     query_term = parse.quote(term) # For web searches

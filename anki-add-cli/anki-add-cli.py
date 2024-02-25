@@ -112,6 +112,8 @@ def backlog():
 
 # Backlog/TODO
 
+# Put this into its own repo (so that vscode uses just one venv per workspace/repo)
+
 # See the extension that tries to work around duplicate detection across the note type:
 # https://ankiweb.net/shared/info/1587955871
 # But, What about Android? Can just add the duplicate, and let this script figure it out later when dequeueing empties ...

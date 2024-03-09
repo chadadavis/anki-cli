@@ -435,7 +435,7 @@ def normalizer(string, *, term=None):
         ,r'\S+ologie'
         ,r'\S+onomie'
         ,r'\S*techniek'
-        ,r'financi\S+'
+        ,r'financ[a-z]+'
 
         ,'algemeen'
         ,'ambacht'
@@ -1744,7 +1744,7 @@ def main(deck):
 
             # TODO factor out the rendering of table with headings and columns
             # (auto-calculate widths)
-            print(' ' * 14,
+            print(' ' * 13,
                   YELLOW_N,
                   BLUE_L,
                   f'{"N":>4s}',
@@ -1764,7 +1764,7 @@ def main(deck):
                 learn_n = stats[dn]['learn']
                 review_n = stats[dn]['review']
 
-                print('* ', COLOR_COMMAND, f'{dn:11s}', end=' ')
+                print('*', COLOR_COMMAND, f'{dn:11s}', end=' ')
                 print(BLUE_L if new_n > 0 else GRAY_N, f'{new_n:4d}', end=' ')
                 print(GREEN_N if review_n > 0 else GRAY_N, f'{review_n:3d}', end=' ')
                 print(RED_N if learn_n > 0 else GRAY_N, f'{learn_n:3d}', end=' ')
@@ -1913,25 +1913,21 @@ def main(deck):
                     diff_lines[i] = re.sub(r'^(\?\s*\S+.*?)$', WHITE_L + r'\1' + COLOR_RESET, diff_lines[i])
                 print(*diff_lines, sep='\n')
 
+                prompt = (''
+                    + "\nReplace "
+                    + COLOR_COMMAND
+                    + front
+                    + COLOR_RESET
+                    + " with this definition? [N]/y: "
+                )
+                print(prompt, end='')
                 try:
-                    prompt = (''
-                        + "\nReplace "
-                        + COLOR_COMMAND
-                        + front
-                        + COLOR_RESET
-                        + " with this definition? [N]/y: "
-                    )
-                    reply = input(prompt)
-                except:
-                    reply = None
-                if reply:
-                    # Don't litter readline history with 'y' and 'n'
-                    readline.remove_history_item(
-                        readline.get_current_history_length() - 1
-                    )
-                    if reply.casefold() == 'y':
-                        update_card(card_id, back=normalized)
-                        edits_n += 1
+                    reply = readchar.readkey()
+                except (KeyboardInterrupt) as e:
+                    ...
+                if reply and reply.casefold() == 'y':
+                    update_card(card_id, back=normalized)
+                    edits_n += 1
 
         elif key == 'g' and term:
             search_google(term)

@@ -118,9 +118,9 @@ def backlog():
 # https://ankiweb.net/shared/info/1587955871
 # But, What about Android? Can just add the duplicate, and let this script figure it out later when dequeueing empties ...
 
-# Add support for wiktionary?
+# Add support for wiktionary? (has more words, eg botvieren)
 # (But doesn't always have IPA?) ?
-# Note that the web site searches across languages. How to restrict to a given lang?
+# Note that a word might also list homonyms in other langs. How to restrict to a given lang?
 # eg via ? https://github.com/Suyash458/WiktionaryParser
 
 # Consider putting the menu at the top of the screen, since I focus on the top left to see the words anyway
@@ -132,7 +132,10 @@ def backlog():
 # So, we should try to detect if it's already normalized, as it never will be. For that we'd have to check the raw field content in the note (eg Front or Back)
 
 # logging.error() should also go to the screen, somehow ...
-# Maybe wait until I think of a better way to manage the UI, eg ncurses, etc ?
+# Maybe wait until I think of a better way to manage the UI
+
+# Text UI libs? eg ncurses, etc ?
+# https://www.willmcgugan.com/blog/tech/post/building-rich-terminal-dashboards/
 
 # Make the 'o' command open whatever the source URL was (not just woorden.org)
 
@@ -198,7 +201,7 @@ def backlog():
 
 # Consider adding a GPT command/prompt to ask adhoc questions about this / other cards ?
 # Also when no results found.
-# Could use the embeddings to find synonyms, for example
+# Could use the embeddings to find synonyms, for example (and note which I have locally?)
 # Might have to use stop tokens to limit the response to one line ?
 # Or rather than customize it for one service, make a command (!) to pipe to a shell command
 # Doesn't vim also have something like that?
@@ -216,6 +219,7 @@ def backlog():
 # Get IPA from Wiktionary (rather than FreeDictionary)?
 # And maybe later think about how to combine/concat these also to the same anki card ...
 # Is there an API for FD? Doesn't seem like it.
+# cf get_url()
 
 # Add nl-specific etymology? (Wiktionary has some of this)
 # https://etymologiebank.nl/
@@ -325,6 +329,7 @@ class Key(enum.StrEnum):
     CTRL_P  = '\x10'
     CTRL_W  = '\x17'
     UP      = '\x1b[A'
+    DEL     = '\x1b[3~'
 
 
 def invoke(action, **params):
@@ -810,6 +815,24 @@ def highlighter(string, query, *, term='', deck=None):
     return string
 
 
+def get_url(term, *, lang):
+    """Get a dict of source URL(s) for a given query term/expression"""
+
+    quoted = parse.quote(term) # URL quoting
+
+    # TODO could perhaps generalize this further into a list or (per-lang) providers
+    # That would provide both source URLs, as well as parsing rules for the response
+    url = {}
+    url['google'] = f'https://google.com/search?q={quoted}'
+    url['freedictionary'] = f'https://{lang}.thefreedictionary.com/{quoted}'
+    url['wiktionary'] = f'https://{lang}.wiktionary.org/wiki/{quoted}'
+
+    # TODO add lang-specific dicts ?
+    # TODO add a default per language, eg 'nl' aliases to 'woorden'
+
+    return url
+
+
 def search(term, *, lang):
     obj = {}
 
@@ -823,6 +846,7 @@ def search(term, *, lang):
 
 
 def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''):
+    """Local search of Anki"""
 
     # If term contains whitespace, either must quote the whole thing, or replace
     # spaces:
@@ -1270,6 +1294,7 @@ def editor(content_a: str='', /) -> str:
     """Edit a (multi-line) string, by running your $EDITOR on a temp file
 
     Note, this does not call normalizer() automatically
+    TODO: put this in a module
     """
 
     tf_name = '/tmp/' + os.path.basename(__file__).removesuffix('.py') + '.tmp'
@@ -1834,7 +1859,7 @@ def main(deck):
             sync()
             edits_n = 0
             sync_last_epoch = int(time.time())
-        elif key == 't' and card_id:
+        elif key in ('t', Key.DEL) and card_id:
             if delete_card(card_id):
                 edits_n += 1
                 del card_ids[card_ids_i]
@@ -1929,13 +1954,12 @@ def main(deck):
                     update_card(card_id, back=normalized)
                     edits_n += 1
 
-        elif key == 'g' and term:
-            search_google(term)
         elif key == 'o' and term:
-            url_term = parse.quote(term) # For web searches
-            # TODO this should use whatever the currently active dictionary is
-            url=f'http://www.woorden.org/woord/{url_term}'
-            launch_url(url)
+            pyperclip.copy(term)
+            url = get_url(term, lang=lang)
+            for k, v in url.items():
+                print(v)
+            launch_url(url['wiktionary'])
         elif key == 'a' and term and not card_id:
             add_card(term, content, deck=deck)
             edits_n += 1

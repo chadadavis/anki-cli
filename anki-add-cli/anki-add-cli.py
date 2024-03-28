@@ -2169,6 +2169,7 @@ if __name__ == "__main__":
     )
     options = parser.parse_args()
 
+    # Running within a debugger?
     options.debug = options.debug or bool(sys.gettrace())
 
     # Logging level and defaults

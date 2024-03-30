@@ -69,6 +69,7 @@ import os
 import pprint
 import random
 import readline
+import socket
 import subprocess
 import sys
 import tempfile
@@ -153,7 +154,7 @@ def backlog():
 
 # AnkiConnect deprecate deprecated functions, eg:
 # addons21/AnkiConnect/__init__.py:520:allNames is deprecated: please use 'all_names'
-# See the log, eg when starting anki from the CLI
+# See the console output, eg when starting anki from a tty
 
 # TODO make a class for a Card ?
 # Or at least wrap it in my `dictd` class (from startup.py), so that it could be:
@@ -332,6 +333,35 @@ class Key(enum.StrEnum):
     DEL     = '\x1b[3~'
 
 
+def assert_anki(retry=True):
+    """Ping anki-connect to check if it's running, else launch anki
+
+    NB, Anki is a singleton, so this wouldn't launch multiples
+    """
+
+    port = 8765
+    host = 'localhost'
+    try:
+        socket.create_connection((host, port), timeout=1).close()
+        return True
+    except (ConnectionRefusedError, socket.timeout):
+        if not retry:
+            msg = (
+                'Failed to connect to Anki. '
+                'Make sure that Anki is running, '
+                'and using the anki-connect add-on.'
+            )
+            logging.warning(msg)
+            sys.exit(msg)
+
+    cmd = f'ANKI_WAYLAND=1 anki &>> {__file__}.log &'
+    logging.info(f'launching ... {cmd}')
+    os.system(cmd)
+    time.sleep(1.0)
+    # Try one last time
+    return assert_anki(retry=False)
+
+
 def invoke(action, **params):
     """Send a request to Anki desktop via the API for the anki-connect add-on
 
@@ -365,13 +395,11 @@ def invoke(action, **params):
         else:
             return response['result']
     except (ConnectionRefusedError, URLError) as e:
-        msg = (
-            'Failed to connect to Anki. '
-            'Make sure that Anki is running, '
-            'and using the anki-connect add-on.'
-        )
-        logging.warning(msg)
-        sys.exit(msg)
+        if assert_anki():
+            # Retry the request
+            return invoke(action, **params)
+        else:
+            return None
 
 
 def get_deck_names():
@@ -2180,8 +2208,12 @@ if __name__ == "__main__":
         if level_str.startswith(options.level.upper()):
             options.level = level_str
     level_int = levels.get(options.level, levels['WARNING'])
+    # TODO rather than basicConfig() use custom handlers to also get warnings on stderr
+    # And factor that out into a init_log() function
+    # stream_handler = logging.StreamHandler(sys.stderr)
+    # stream_handler.setLevel(logging.WARNING)
     logging.basicConfig(filename=__file__ + '.log',
-                        filemode='w',
+                        filemode='a',
                         level=level_int,
                         format=f'%(asctime)s %(levelname)-8s %(lineno)4d %(funcName)-20s %(message)s'
                         )
@@ -2196,7 +2228,7 @@ if __name__ == "__main__":
 
     readline.set_completer(completer)
     readline.set_completer_delims('')
-    readline.parse_and_bind("tab: complete")
+    readline.parse_and_bind("tab:menu-complete")
 
     # For autopage. When the EOF of the long definition is printed,
     # automatically end the pager process, without requiring the user to press

@@ -152,10 +152,6 @@ def backlog():
 # Or, is there a way/an API call to get all the counts of new/learning/reviewing from all decks in one call?
 # See getDeckStats which gives new_count, learn_count, review_count and "name", for each deck object
 
-# AnkiConnect deprecate deprecated functions, eg:
-# addons21/AnkiConnect/__init__.py:520:allNames is deprecated: please use 'all_names'
-# See the console output, eg when starting anki from a tty
-
 # TODO make a class for a Card ?
 # Or at least wrap it in my `dictd` class (from startup.py), so that it could be:
 #   card.fields.front.value (instead of the verbose syntax)
@@ -271,7 +267,9 @@ def backlog():
 # figure out how to package deps (eg readchar) and test it again after removing local install of readchar
 
 # Move this dir to its own repo
-# https://manpages.ubuntu.com/manpages/kinetic/en/man1/git-filter-repo.1.html
+# http://manpages.ubuntu.com/manpages/git-filter-repo
+# or
+# http://manpages.ubuntu.com/manpages/git-filter-branch
 
 # Stemming for search?
 # Or add the inflected forms to the card? as a new field?
@@ -354,9 +352,13 @@ def assert_anki(retry=True):
             logging.warning(msg)
             sys.exit(msg)
 
-    cmd = f'ANKI_WAYLAND=1 anki &>> {__file__}.log &'
+    # If you use os.system to background Anki here, it would launch, but it will
+    # not understand redirecting stdout/stderr to a log file.
+    # Output from Anki/add-ons would interfere with our CLI output on stdout.
+    cmd = ['env', 'ANKI_WAYLAND=1', 'anki']
     logging.info(f'launching ... {cmd}')
-    os.system(cmd)
+    with open(f'anki.log', 'a') as log_file:
+        subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
     time.sleep(1.0)
     # Try one last time
     return assert_anki(retry=False)
@@ -1243,6 +1245,7 @@ def get_card(id):
     """
 
     cardsInfo = invoke('cardsInfo', cards=[id])
+    if not cardsInfo: return
     card = cardsInfo[0]
     logging.debug(f"Model/Note type:" + card['modelName'])
     if card['modelName'] != 'Basic' :

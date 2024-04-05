@@ -1635,7 +1635,7 @@ def main(deck):
                 menu += [ "     " ]
 
         menu += [ '│' ]
-        menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
+        menu += [ "(D)eck:" + COLOR_HIGHLIGHT + deck + COLOR_RESET]
 
         # Check for incoming changes periodically.
         # But push outgoing changes sooner, since we know if any are pending.
@@ -1672,9 +1672,9 @@ def main(deck):
             if is_reviewing or learn_n or review_n :
                 menu += [ ''
                     + "Re(v)iew: "
-                    + (BLUE_L if new_n > 0 else GRAY_N) + f'{new_n:4d}'
-                    + (RED_N if learn_n > 0 else GRAY_N) + f'{learn_n:4d}'
-                    + (GREEN_N if review_n > 0 else GRAY_N) + f'{review_n:4d}'
+                    + (BLUE_N if new_n > 0 else GRAY_N) + f'{new_n:4d}'
+                    + (GREEN_N if review_n > 0 else GRAY_N) + f'{review_n:2d}'
+                    + (RED_N if learn_n > 0 else GRAY_N) + f'{learn_n:2d}'
                     + COLOR_RESET
                 ]
 
@@ -1701,7 +1701,7 @@ def main(deck):
             menu += [
                 "(B)rowse",
                 "(S)earch",
-                COLOR_VALUE + term + COLOR_RESET,
+                COLOR_HIGHLIGHT + term + COLOR_RESET,
                 # "(G)oogle",
             ]
 
@@ -1803,16 +1803,13 @@ def main(deck):
 
             # TODO factor out the rendering of table with headings and columns
             # (auto-calculate widths)
-            print(' ' * 13,
-                  YELLOW_N,
-                  BLUE_L,
-                  f'{"N":>4s}',
-                  GREEN_N,
-                  f'{"R":>3s}',
-                  RED_N,
-                  f'{"L":>3s}',
+            print('  ' + (' ') * 10,
+                  BLUE_N,  f'{"N":>4s}',
+                  GREEN_N, f'{"R":>3s}',
+                  RED_N,   f'{"L":>3s}',
                   COLOR_RESET,
-                  sep=' ',
+                  sep='',
+                  end='\n',
             )
             for dn in decks:
                 # This is a bit too slow:
@@ -1823,10 +1820,10 @@ def main(deck):
                 learn_n = stats[dn]['learn']
                 review_n = stats[dn]['review']
 
-                print('*', COLOR_COMMAND, f'{dn:11s}', end=' ')
-                print(BLUE_L if new_n > 0 else GRAY_N, f'{new_n:4d}', end=' ')
-                print(GREEN_N if review_n > 0 else GRAY_N, f'{review_n:3d}', end=' ')
-                print(RED_N if learn_n > 0 else GRAY_N, f'{learn_n:3d}', end=' ')
+                print('* ', f'{dn:10s}', sep='', end='')
+                print(BLUE_N  if new_n > 0    else GRAY_N, f'{new_n:4d}',    sep='', end='')
+                print(GREEN_N if review_n > 0 else GRAY_N, f'{review_n:3d}', sep='', end='')
+                print(RED_N   if learn_n > 0  else GRAY_N, f'{learn_n:3d}',  sep='', end='')
 
                 # TODO factor out the scaling and tick marks drawing
 
@@ -1840,7 +1837,7 @@ def main(deck):
                 rem = due_n % mod
                 print(
                     COLOR_RESET,
-                    '|',
+                    ' |',
                     ('─' * (mod-1) + '|') * quot,
                     '─' * rem,
                     sep=''
@@ -2067,7 +2064,7 @@ def main(deck):
             # TODO factor the prompt of 'term' into a function?
             clear_line()
             try:
-                term = input(f"Search: {COLOR_VALUE + deck + COLOR_RESET}/")
+                term = input(f"Search: {deck + '/'}")
             except:
                 continue
             term = term.strip()

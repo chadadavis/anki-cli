@@ -298,28 +298,31 @@ def backlog():
 # Color codes:
 # The leading '1;' makes a foreground color bold/bright as well.
 # https://stackoverflow.com/a/33206814/256856
-YELLOW_N = "\033[0;33m"
-YELLOW_L = "\033[1;33m"
-YELLOW_B = "\033[0;93m" #Bright
-WHITE_N  = "\033[0;37m"
-WHITE_L  = "\033[1;37m"
-GREEN_N  = "\033[0;32m"
-GREEN_L  = "\033[1;32m"
-GRAY_N   = "\033[0;02m"
-GRAY_L   = "\033[1;02m"
-BLUE_N   = "\033[0;34m"
-BLUE_L   = "\033[1;34m"
-RED_N    = "\033[0;31m"
-RED_L    = "\033[1;31m"
 RESET    = "\033[0;00m"
+GRAY_N   = "\033[0;02m"
+GRAY_B   = "\033[1;02m"
+RED_N    = "\033[0;31m"
+RED_B    = "\033[1;31m"
+GREEN_N  = "\033[0;32m"
+GREEN_B  = "\033[1;32m"
+YELLOW_N = "\033[0;33m"
+YELLOW_B = "\033[1;33m"
+BLUE_N   = "\033[0;34m"
+BLUE_B   = "\033[1;34m"
+# MAGENTA 35
+# CYAN    36
+WHITE_N  = "\033[0;37m"
+WHITE_B  = "\033[1;37m"
+
+YELLOW_L = "\033[0;93m" #Bright
 
 # Abstract colors into use cases, in case we want to change the mapping later
-COLOR_COMMAND   = WHITE_L
-COLOR_WARN      = YELLOW_L
+COLOR_COMMAND   = WHITE_B
+COLOR_WARN      = YELLOW_B
 COLOR_INFO      = GRAY_N
-COLOR_OK        = GREEN_L
-COLOR_VALUE     = GREEN_L
-COLOR_HIGHLIGHT = YELLOW_B
+COLOR_OK        = GREEN_B
+COLOR_VALUE     = GREEN_N
+COLOR_HIGHLIGHT = YELLOW_L
 COLOR_RESET     = RESET
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -1635,7 +1638,7 @@ def main(deck):
                 menu += [ "     " ]
 
         menu += [ '│' ]
-        menu += [ "(D)eck:" + COLOR_HIGHLIGHT + deck + COLOR_RESET]
+        menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
 
         # Check for incoming changes periodically.
         # But push outgoing changes sooner, since we know if any are pending.
@@ -1967,7 +1970,7 @@ def main(deck):
                 for i in range(len(diff_lines)) :
                     diff_lines[i] = re.sub(r'^(\+\s*\S+.*?)$',    GREEN_N + r'\1' + COLOR_RESET, diff_lines[i])
                     diff_lines[i] = re.sub(r'^(\-\s*\S+.*?)$',      RED_N + r'\1' + COLOR_RESET, diff_lines[i])
-                    diff_lines[i] = re.sub(r'^(\?\s*\S+.*?)$', WHITE_L + r'\1' + COLOR_RESET, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\?\s*\S+.*?)$', WHITE_B + r'\1' + COLOR_RESET, diff_lines[i])
                 print(*diff_lines, sep='\n')
 
                 prompt = (''

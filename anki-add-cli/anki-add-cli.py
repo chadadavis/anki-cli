@@ -57,6 +57,7 @@ empties, the existing card will be detected.
 # to the non-consistent format.
 
 import argparse
+import copy
 import datetime
 import difflib
 import enum
@@ -114,15 +115,19 @@ def backlog():
 # Backlog/TODO
 
 # Put this into its own repo (so that vscode uses just one venv per workspace/repo)
+# And enable the debugger
 
 # See the extension that tries to work around duplicate detection across the note type:
 # https://ankiweb.net/shared/info/1587955871
 # But, What about Android? Can just add the duplicate, and let this script figure it out later when dequeueing empties ...
 
+# TODO rethink/refactor the sanity of this state machine in the main loop
+
 # Add support for wiktionary? (has more words, eg botvieren)
 # (But doesn't always have IPA?) ?
 # Note that a word might also list homonyms in other langs. How to restrict to a given lang?
 # eg via ? https://github.com/Suyash458/WiktionaryParser
+# Consider making that its own Anki add-on, independent of this CLI
 
 # Consider putting the menu at the top of the screen, since I focus on the top left to see the words anyway
 # But then I'd still need to keep the search/input line at the bottom, due to the sequence of printing
@@ -221,7 +226,7 @@ def backlog():
 # Add nl-specific etymology? (Wiktionary has some of this)
 # https://etymologiebank.nl/
 
-# using Wiktionary would enable mapping from conjugated forms eg postgevat because it links to the infinitives eg postvatten 
+# using Wiktionary would enable mapping from conjugated forms eg postgevat because it links to the infinitives eg postvatten
 # (but then search again locally first, since I might already have that verb)
 
 # FR: Or use a diff source, eg TV5
@@ -378,14 +383,23 @@ def invoke(action, **params):
 
     try:
         response = json.load(request.urlopen(req))
-        result_log = response['result']
 
         if options.debug:
             # Simplify some debug logging
-            if isinstance(result_log, list) and len(result_log) > 10:
-                result_log = 'len:' + str(len(result_log))
-            if isinstance(result_log, dict) and 'fields' in result_log:
-                result_log['fields']['Back']['value'] = '...'
+            result_log = copy.deepcopy(response['result'])
+            if isinstance(result_log, dict):
+                result_log = [ result_log ]
+            if isinstance(result_log, list):
+                if len(result_log) > 10:
+                    result_log = 'len:' + str(len(result_log))
+                else:
+                    for obj in result_log:
+                        if not isinstance(obj, dict): continue
+                        for field in ('question', 'answer', 'css'):
+                            if field in obj: obj[field] = '<...>'
+                        if 'fields' in obj and 'Back' in obj['fields']:
+                            obj['fields']['Back']['value'] = '<...>'
+
             logging.debug('result:\n' + pp.pformat(result_log), stacklevel=2)
 
         error = response['error']
@@ -1461,10 +1475,7 @@ def scroll_screen_to_menu(content="", line_pos=None):
 
     # Remaining newlines to be scrolled down
     lines_n = os.get_terminal_size().lines - line_pos - OFFSET
-
-    for i in range(lines_n):
-        ...
-        # print(f'{i:2d}')
+    logging.debug(f'{line_pos=} {lines_n=}')
     print("\n" * lines_n, end='')
 
 
@@ -1490,6 +1501,8 @@ def main(deck):
 
     # Is the current result set a review (else it's a search result)
     is_reviewing = False
+    # Show the content only after user was prompted to review
+    do_reveal = False
 
     # Across the deck, the number(s) of wildcard matches on the front/back of
     # other cards
@@ -1536,50 +1549,38 @@ def main(deck):
             if content:
                 normalized = normalizer(content, term=term)
 
+        logging.debug(f'{term=}')
         # Save the content, before further display-only modifications
         content = normalized
         if normalized:
             front = (card_ids and card['fields']['Front']['value']) or term or ''
+            logging.debug(f'{front=}')
             normalized = renderer(normalized, term, term=front, deck=deck)
 
             # If this card is due, prompt to review, don't reveal the content
             # until keypress. Ignore new/unseen cards here, because new cards
             # are lower priority than (over-)due reviews. (But we can still
             # enable the menu item to review new cards below ...)
-            if not options.scroll and card_id and (is_due(card_id) or (is_reviewing and is_new(card_id))):
-                # TODO factor this out into eg review_card() or review_term()
-                print(renderer('', term=front))
-                print(wrapper(''.join([
-                    COLOR_INFO,
-                    'Review?\n',
-                    COLOR_COMMAND,
-                    '[Press any key]',
-                    COLOR_RESET,
-                ])))
-                scroll_screen_to_menu(line_pos=5)
-                # Push reviewed cards onto readline history, if it wasn't
-                # already the search term
+
+
+        # How many lines down the screen are we already?
+        line_pos = 0
+
+        # If using --auto-scroll (ie when using --auto-update), then
+        # no need to print every definition along the way
+        if not options.scroll :
+            # Hide content of to-be-reviewed card back until next iteration/keypress
+            if card_id and (not do_reveal) and (is_due(card_id) or (is_reviewing and is_new(card_id))):
+                normalized = renderer('Press [Space] to review ...', term, term=front, deck=deck)
+
+                # Push reviewed term onto readline history,
+                # if it wasn't already the search term
                 if term != front:
                     readline.add_history(front)
-                # Wait, so user has time to think about it, before seeing it
-                try:
-                    key = readchar.readkey()
-                except (KeyboardInterrupt) as e:
-                    ...
-                if key in (None, 'n'):
-                    # Skip this card, advance to Next
-                    key = 'n'
-                else:
-                    # Reset, for the readkey loop below
-                    key = None
 
-        # If --auto-scroll (ie when using --auto-update), no need to print every
-        # definition along the way
-        if not options.scroll :
             with autopage.AutoPager() as out:
                 print(normalized, file=out)
 
-        line_pos = 0
         if content:
             # +1 because of default end='\n'
             line_pos = 1 + len(re.findall("\n", normalized))
@@ -1626,7 +1627,7 @@ def main(deck):
             menu += [ "(R)eplace" ]
 
             # if is_due(card_id) or is_new(card_id):
-            if is_due(card_id) or (is_reviewing and is_new(card_id)):
+            if do_reveal:
                 menu += [ '(1-4) ' + COLOR_WARN + '?' + COLOR_RESET]
                 # menu += [ f"{card['interval']:5d} d" ]
             else:
@@ -1736,12 +1737,14 @@ def main(deck):
             clear_line()
             print(menu + '\r', end='', flush=True)
             key = readchar.readkey()
-            logging.debug(f'{key=}')
-            # Don't accept space(s),
-            # because it might be the user not realizing the pager has ended
-            if re.search(r'^\s+$', key) :
-                key = None
 
+            # Don't accept space(s),
+            # It might be the user not realizing the pager has ended.
+            # NB, this breaks using Space to do_reveal the content when is_reviewing
+            # if re.fullmatch(r'\s*', key) :
+            #     key = None
+
+        logging.debug(f'{key=}')
         clear_line()
 
         # TODO smarter way to clear relevant state vars ?
@@ -1917,9 +1920,10 @@ def main(deck):
             suggestions = []
         elif key in ('n') and card_ids_i < len(card_ids) - 1:
             card_ids_i += 1
+            do_reveal = False
         elif key in ('p', 'N') and card_ids_i > 0:
             card_ids_i -= 1
-
+            do_reveal = False
         elif key == 'f' and term:
             # Fetch (remote dictionary service)
             obj = search(term, lang=deck)
@@ -1998,8 +2002,7 @@ def main(deck):
             # And search it to verify
             card_ids = search_anki(term, deck=deck)
             card_ids_i = 0
-        elif (True
-            and key in ('1','2','3','4')
+        elif (key in ('1','2','3','4')
             and card_id
             and (is_due(card_id) or is_new(card_id))
         ):
@@ -2009,6 +2012,11 @@ def main(deck):
             if card_ids_i < len(card_ids) - 1:
                 card_ids_i += 1
             is_reviewing = True
+            do_reveal = False
+        elif key in (' ') and content:
+            is_reviewing = True
+            # This allows the content to be revealed on next round
+            do_reveal = True
         elif key == 'm' and empty_ids:
             card_id = empty_ids[0]
             term = get_card(card_id)['fields']['Front']['value']
@@ -2036,19 +2044,6 @@ def main(deck):
             suggestions = obj and obj.get('suggestions') or []
             # If any, suggestions/content printed on next iteration.
 
-            if content:
-                # TODO factor this out into eg review_card() or review_term()
-                print(renderer('', term=term))
-                print(wrapper(''
-                    + COLOR_INFO
-                    + 'Review?\n'
-                    + COLOR_COMMAND
-                    + '[Press any key]'
-                    + COLOR_RESET
-                ))
-                scroll_screen_to_menu(line_pos=5)
-                key = readchar.readkey()
-
         elif key in ('/', 'v'):
             term = ''
             content = None
@@ -2059,7 +2054,11 @@ def main(deck):
             )
             card_ids_i = 0
             is_reviewing = True
+            do_reveal = False
         elif key in ('s', Key.CTRL_P, Key.UP):
+            is_reviewing = False
+            do_reveal = False
+
             # Exact match search
 
             content = None
@@ -2116,7 +2115,7 @@ def main(deck):
             edits_n += 1
 
         else:
-            logging.debug(f'Unknown command: {key}')
+            logging.debug(f'No matching command for {key=}')
             # Unrecognized command.
             beep()
             # TODO add a '?' function that programmatically lists available
@@ -2202,7 +2201,6 @@ if __name__ == "__main__":
 
     # Running within a debugger?
     options.debug = options.debug or bool(sys.gettrace())
-
     # Logging level and defaults
     options.level = options.level or (options.debug and 'DEBUG') or 'WARNING'
     # Allow for prefix-matching too, eg deb => DEBUG, crit => CRITICAL, etc
@@ -2211,6 +2209,9 @@ if __name__ == "__main__":
         if level_str.startswith(options.level.upper()):
             options.level = level_str
     level_int = levels.get(options.level, levels['WARNING'])
+    level_int = level_int or 1 # The 0 gets ignored, so fallback to 1 for TRACE
+    # Also set our general debug mode/flag when loglevel is NOTSET (trace everything)
+    options.debug = (options.level in ('NOTSET', 'DEBUG')) or options.debug
     # TODO rather than basicConfig() use custom handlers to also get warnings on stderr
     # And factor that out into a init_log() function
     # stream_handler = logging.StreamHandler(sys.stderr)
@@ -2220,7 +2221,7 @@ if __name__ == "__main__":
                         level=level_int,
                         format=f'%(asctime)s %(levelname)-8s %(lineno)4d %(funcName)-20s %(message)s'
                         )
-    logging.info('\n')
+    logging.info('__main__')
 
     decks = get_deck_names()
     if not options.deck:

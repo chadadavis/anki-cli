@@ -49,69 +49,6 @@ empties, the existing card will be detected.
 
 """
 
-# Note, that regex search in Anki is supported from 2.1.24+ onward
-# https://apps.ankiweb.net/
-# https://docs.ankiweb.net/searching.html
-# https://docs.rs/regex/1.3.9/regex/#syntax
-# But it unfortunately doesn't help much for the NL words from woorden.org due
-# to the non-consistent format.
-
-import argparse
-import copy
-import datetime
-import difflib
-import enum
-import functools
-import html
-import json
-import logging
-import math
-import os
-import pprint
-import random
-import readline
-import socket
-import subprocess
-import sys
-import tempfile
-import textwrap
-import time
-from typing import Optional
-from urllib import request, parse
-from urllib.error import HTTPError, URLError
-
-import autopage
-import bs4  # BeautifulSoup
-
-# NB, the pip package is called iso-639 (with "-").
-# And this is TODO DEPRECATED
-# DEPRECATION: iso-639 is being installed using the legacy 'setup.py install'
-# method, because it does not have a 'pyproject.toml' and the 'wheel' package is
-# not installed. pip 23.1 will enforce this behavior change. A possible
-# replacement is to enable the '--use-pep517' option. Discussion can be found at
-# https://github.com/pypa/pip/issues/8559
-# Alternatively, try: https://pypi.org/project/pycountry/
-import iso639  # Map e.g. 'de' to 'german', as required by SnowballStemmer
-
-import pyperclip
-import readchar  # For reading single key-press commands
-
-# The override for `re` is necessary for wildcard searches, due to extra
-# interpolation. # Otherwise 're' raises an exception. Search for 'regex' below.
-# https://learnbyexample.github.io/py_regular_expressions/gotchas.html
-# https://docs.python.org/3/library/re.html#re.sub
-# "Unknown escapes of ASCII letters are reserved for future use and treated as
-# errors."
-import regex as re
-
-import unidecode
-from nltk.stem.snowball import SnowballStemmer
-
-
-# This bogus def just makes it easier for me to jump here in my editor
-def backlog():
-    ...
-
 # Backlog/TODO
 
 # Put this into its own repo (so that vscode uses just one venv per workspace/repo)
@@ -292,40 +229,116 @@ def backlog():
 
 # See smaller, inline TODOs below ...
 
+# Note, that regex search in Anki is supported from 2.1.24+ onward
+# https://apps.ankiweb.net/
+# https://docs.ankiweb.net/searching.html
+# https://docs.rs/regex/1.3.9/regex/#syntax
+
+
 ################################################################################
 
+import argparse
+import copy
+import datetime
+import difflib
+import enum
+import functools
+import html
+import json
+import logging
+import math
+import os
+import pprint
+import random
+import readline
+import socket
+import subprocess
+import sys
+import tempfile
+import textwrap
+import time
+from typing import Optional
+from urllib import request, parse
+from urllib.error import HTTPError, URLError
 
-# Color codes:
-# The leading '1;' makes a foreground color bold/bright as well.
-# https://stackoverflow.com/a/33206814/256856
-RESET    = "\033[0;00m"
-GRAY_N   = "\033[0;02m"
-GRAY_B   = "\033[1;02m"
-RED_N    = "\033[0;31m"
-RED_B    = "\033[1;31m"
-GREEN_N  = "\033[0;32m"
-GREEN_B  = "\033[1;32m"
-YELLOW_N = "\033[0;33m"
-YELLOW_B = "\033[1;33m"
-BLUE_N   = "\033[0;34m"
-BLUE_B   = "\033[1;34m"
-# MAGENTA 35
-# CYAN    36
-WHITE_N  = "\033[0;37m"
-WHITE_B  = "\033[1;37m"
 
-YELLOW_L = "\033[0;93m" #Bright
+# External dependencies
+import addict
+import autopage
+import bs4  # BeautifulSoup
 
-# Abstract colors into use cases, in case we want to change the mapping later
-COLOR_COMMAND   = WHITE_B
-COLOR_WARN      = YELLOW_B
-COLOR_INFO      = GRAY_N
-COLOR_OK        = GREEN_B
-COLOR_VALUE     = GREEN_N
-COLOR_HIGHLIGHT = YELLOW_L
-COLOR_RESET     = RESET
+# NB, the pip package is called iso-639 (with "-").
+# And this is TODO DEPRECATED
+# DEPRECATION: iso-639 is being installed using the legacy 'setup.py install'
+# method, because it does not have a 'pyproject.toml' and the 'wheel' package is
+# not installed. pip 23.1 will enforce this behavior change. A possible
+# replacement is to enable the '--use-pep517' option. Discussion can be found at
+# https://github.com/pypa/pip/issues/8559
+# Alternatively, try: https://pypi.org/project/pycountry/
+import iso639  # Map e.g. 'de' to 'german', as required by SnowballStemmer
 
+import pyperclip
+import readchar  # For reading single key-press commands
+
+# The override for `re` is necessary for wildcard searches, due to extra
+# interpolation. # Otherwise 're' raises an exception. Search for 'regex' below.
+# https://learnbyexample.github.io/py_regular_expressions/gotchas.html
+# https://docs.python.org/3/library/re.html#re.sub
+# "Unknown escapes of ASCII letters are reserved for future use and treated as
+# errors."
+import regex as re
+
+import unidecode
+from nltk.stem.snowball import SnowballStemmer
+
+p = print
 pp = pprint.PrettyPrinter(indent=4)
+
+
+################################################################################
+# Color codes:
+# https://stackoverflow.com/a/33206814/256856
+
+COLOR = dict()
+COLOR['DN'] = "\033[0;00m" # default normal (depends on terminal color theme)
+COLOR['DD'] = "\033[0;02m" # default dim
+COLOR['DB'] = "\033[1;02m" # default bold (and dim)
+COLOR['RN'] = "\033[0;31m" # red normal
+COLOR['RB'] = "\033[1;31m" # red bold
+COLOR['GN'] = "\033[0;32m" # green
+COLOR['GB'] = "\033[1;32m"
+COLOR['YN'] = "\033[0;33m" # yellow
+COLOR['YB'] = "\033[1;33m"
+COLOR['BN'] = "\033[0;34m" # blue
+COLOR['BB'] = "\033[1;34m"
+COLOR['MN'] = "\033[0;35m" # magenta
+COLOR['MB'] = "\033[1;35m"
+COLOR['CN'] = "\033[0;36m" # cyan
+COLOR['CB'] = "\033[1;36m"
+COLOR['WN'] = "\033[0;37m" # white
+COLOR['WB'] = "\033[1;37m"
+
+COLOR['YL'] = "\033[0;93m" # yellow light(er)
+
+# Abstract colors concepts / use cases
+COLOR['NONE'] = COLOR['DN'] # default normal (depends on terminal color theme)
+COLOR['COMM'] = COLOR['WB'] # commands, menu items, hot keys/shortcuts
+COLOR['FAIL'] = COLOR['RN'] # errors, failures, alerts, urgency
+COLOR['WARN'] = COLOR['YB'] # warnings, attention, CTAs
+COLOR['INFO'] = COLOR['DD'] # info, debug, low prio
+COLOR['OKOK'] = COLOR['GB'] # ok, success, affirmation
+COLOR['VALS'] = COLOR['GN'] # values, variables
+COLOR['HIGH'] = COLOR['YL'] # highlights, search keywords,
+
+
+# The addict.Dict allows dotted access to dict keys as attributes, eg C.WARN
+C = addict.Dict(COLOR)
+
+def W(color:str, string:str=''):
+    """Wrap a color around an string, and then reset the color back to default
+    eg W(C.WARN, 'Warning message')
+    """
+    return color + string + C.NONE
 
 
 class Key(enum.StrEnum):
@@ -548,7 +561,7 @@ def normalizer(string, *, term=None):
         else:
             # Notify, so you can (manually) add this one to the 'categories'
             # list above.
-            print(f'\nNew category [{COLOR_WARN}{category}{COLOR_RESET}]\n',)
+            print(f"\nNew category [" + W(C.WARN, category) + "]\n",)
             beep()
             # time.sleep(5)
 
@@ -844,8 +857,8 @@ def highlighter(string, query, *, term='', deck=None):
         for t in reversed(spans):
             x,y = t
             # Also, here, y before x, since back-to-front
-            l.insert(y, COLOR_RESET)
-            l.insert(x, COLOR_HIGHLIGHT)
+            l.insert(y, C.NONE)
+            l.insert(x, C.HIGH)
 
         string = ''.join(l)
     else:
@@ -855,7 +868,7 @@ def highlighter(string, query, *, term='', deck=None):
         # That's why ({highlight}) needs it's own parens here.
         string = re.sub(
             f"(?i:({highlight_re}))",
-            COLOR_HIGHLIGHT + r'\1' + COLOR_RESET,
+            C.HIGH + r'\1' + C.NONE,
             string
         )
 
@@ -1149,9 +1162,9 @@ def is_empty(card_id):
 
 def hr():
     LINE_WIDTH = os.get_terminal_size().columns
-    print(COLOR_INFO, end='')
+    print(C.INFO, end='')
     print('─' * LINE_WIDTH, end='\n')
-    print(COLOR_RESET, end='')
+    print(C.NONE, end='')
 
 
 def launch_url(url):
@@ -1168,14 +1181,13 @@ def search_google(term):
     url=f'https://google.com/search?q={query_term}'
     launch_url(url)
 
-
 def search_woorden(term, *, url='http://www.woorden.org/woord/'):
     query_term = parse.quote(term) # For web searches
     url = url + query_term
     logging.info(url)
     # TODO factor this out into an on-screen status() func (curses?)
     clear_line()
-    print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
+    print( W(C.INFO, f"Fetching: {url} ..." ), end='', flush=True)
 
     try:
         response = request.urlopen(url)
@@ -1215,7 +1227,7 @@ def search_thefreedictionary(term, *, lang):
 
     # TODO factor this out into status() func or something (curses?)
     clear_line()
-    print(COLOR_INFO + f"Fetching: {url} ..." + COLOR_RESET, end='', flush=True)
+    print(W(C.INFO, f"Fetching: {url} ..."), end='', flush=True)
 
     try:
         response = request.urlopen(url)
@@ -1595,7 +1607,7 @@ def main(deck):
             if wild_n:
                 hr()
                 # TODO factor this out into status() func or something (curses?)
-                print(f"(W)ilds:" + COLOR_VALUE + str(wild_n) + COLOR_RESET)
+                print(f"(W)ilds:" + W(C.VALS, str(wild_n)))
                 line_pos += 3
 
         if suggestions:
@@ -1613,17 +1625,17 @@ def main(deck):
 
         if not card_id:
             if term:
-                menu += [ COLOR_WARN + "+" + COLOR_RESET ]
+                menu += [ W(C.WARN, '+') ]
                 menu += [ "(A)dd    " ]
                 menu += [ "(F)etch  " ]
             else:
                 menu += [ "        " ]
         if card_id:
             if updatable:
-                menu += [ COLOR_WARN + "⬆" + COLOR_RESET]
+                menu += [ W(C.WARN + '⬆') ]
                 menu += [ "(U)pdate " ]
             else:
-                menu += [ COLOR_OK + "✓" + COLOR_RESET]
+                menu += [ W(C.OKOK + '✓') ]
                 menu += [ "Dele(t)e " ]
 
             menu += [ "(E)dit" ]
@@ -1631,14 +1643,14 @@ def main(deck):
 
             # if is_due(card_id) or is_new(card_id):
             if do_reveal:
-                menu += [ '(1-4) ' + COLOR_WARN + '?' + COLOR_RESET]
+                menu += [ '(1-4) ' + W(C.WARN + '?') ]
                 # menu += [ f"{card['interval']:5d} d" ]
             else:
                 # menu += [ "             " ]
                 menu += [ "     " ]
 
         menu += [ '│' ]
-        menu += [ "(D)eck:" + COLOR_VALUE + deck + COLOR_RESET]
+        menu += [ "(D)eck:" + W(C.VALS, deck) ]
 
         # Check for incoming changes periodically.
         # But push outgoing changes sooner, since we know if any are pending.
@@ -1670,20 +1682,21 @@ def main(deck):
         stats = get_deck_stats(ts=time.time()//60)
         if deck:
             new_n = stats[deck]['new']
-            learn_n = stats[deck]['learn']
-            review_n = stats[deck]['review']
-            if is_reviewing or learn_n or review_n :
+            lrn_n = stats[deck]['learn']
+            rev_n = stats[deck]['review']
+            if is_reviewing or lrn_n or rev_n :
+                # Match colors used in the Anki GUI
                 menu += [ ''
                     + "Re(v)iew: "
-                    + (BLUE_N if new_n > 0 else GRAY_N) + f'{new_n:4d}'
-                    + (GREEN_N if review_n > 0 else GRAY_N) + f'{review_n:2d}'
-                    + (RED_N if learn_n > 0 else GRAY_N) + f'{learn_n:2d}'
-                    + COLOR_RESET
+                    + (C.BN if new_n > 0 else C.DD) + f'{new_n:4d}'
+                    + (C.GN if rev_n > 0 else C.DD) + f'{rev_n:3d}'
+                    + (C.RN if lrn_n > 0 else C.DD) + f'{lrn_n:3d}'
+                    +  C.DN
                 ]
 
         if empty_ids := deck and get_empty(deck):
             menu += [
-                "E(m)pties:" + COLOR_WARN + str(len(empty_ids)) + COLOR_RESET
+                "E(m)pties:" + W(C.WARN, str(len(empty_ids)))
             ]
 
         menu += [ '│' ]
@@ -1695,33 +1708,31 @@ def main(deck):
             # Display index in 1-based counting
             menu += [ ''
                 + "(N)/(P):"
-                + COLOR_VALUE
+                + C.VALS
                 + f"{card_ids_i+1:{digits}d}/{card_ids_n}"
-                + COLOR_RESET
+                + C.NONE
             ]
 
         if term:
             menu += [
                 "(B)rowse",
                 "(S)earch",
-                COLOR_HIGHLIGHT + term + COLOR_RESET,
+                W(C.HIGH, term),
                 # "(G)oogle",
             ]
 
             if wild_n:
                 menu += [ ''
                     + f"(W)ilds:"
-                    + COLOR_VALUE
-                    + str(wild_n)
-                    + COLOR_RESET
+                    + W(C.VALS, str(wild_n))
                     + ' more'
                 ]
 
         # spell-checker:enable
 
         menu = ' '.join(menu)
-        menu = re.sub(r'\(', COLOR_COMMAND, menu)
-        menu = re.sub(r'\)', COLOR_RESET, menu)
+        menu = re.sub(r'\(', C.COMM, menu)
+        menu = re.sub(r'\)', C.NONE, menu)
 
         if not options.deck:
             key = 'd'
@@ -1807,10 +1818,10 @@ def main(deck):
             # TODO factor out the rendering of table with headings and columns
             # (auto-calculate widths)
             print('  ' + (' ') * 10,
-                  BLUE_N,  f'{"N":>4s}',
-                  GREEN_N, f'{"R":>3s}',
-                  RED_N,   f'{"L":>3s}',
-                  COLOR_RESET,
+                  C.BN, f'{"N":>4s}',
+                  C.GN, f'{"R":>3s}',
+                  C.RN, f'{"L":>3s}',
+                  C.DN,
                   sep='',
                   end='\n',
             )
@@ -1820,26 +1831,26 @@ def main(deck):
 
                 # TODO this is duplicated above, factor out the string(s) for counting/displaying count of new/learn/review
                 new_n = stats[dn]['new']
-                learn_n = stats[dn]['learn']
-                review_n = stats[dn]['review']
+                lrn_n = stats[dn]['learn']
+                rev_n = stats[dn]['review']
 
                 print('* ', f'{dn:10s}', sep='', end='')
-                print(BLUE_N  if new_n > 0    else GRAY_N, f'{new_n:4d}',    sep='', end='')
-                print(GREEN_N if review_n > 0 else GRAY_N, f'{review_n:3d}', sep='', end='')
-                print(RED_N   if learn_n > 0  else GRAY_N, f'{learn_n:3d}',  sep='', end='')
+                print(C.BN if new_n > 0 else C.DD, f'{new_n:4d}', sep='', end='')
+                print(C.GN if rev_n > 0 else C.DD, f'{rev_n:3d}', sep='', end='')
+                print(C.RN if lrn_n > 0 else C.DD, f'{lrn_n:3d}', sep='', end='')
+                print(C.DN, end='',)
 
                 # TODO factor out the scaling and tick marks drawing
 
                 # Draw a histogram to emphasize the count of due cards, as a per mille ‰
                 width = 100
                 scale = 1000
-                due_n = int( (learn_n+review_n) * width / scale )
+                due_n = int( (lrn_n+rev_n) * width / scale )
                 # For tick marks on the axis:
                 mod   = int( 100 * width / scale )
                 quot = due_n // mod
                 rem = due_n % mod
                 print(
-                    COLOR_RESET,
                     ' |',
                     ('─' * (mod-1) + '|') * quot,
                     '─' * rem,
@@ -1968,16 +1979,14 @@ def main(deck):
                 hr()
                 diff_lines = list(difflib.Differ().compare(content_old.splitlines(),normalized.splitlines()))
                 for i in range(len(diff_lines)) :
-                    diff_lines[i] = re.sub(r'^(\+\s*\S+.*?)$',    GREEN_N + r'\1' + COLOR_RESET, diff_lines[i])
-                    diff_lines[i] = re.sub(r'^(\-\s*\S+.*?)$',      RED_N + r'\1' + COLOR_RESET, diff_lines[i])
-                    diff_lines[i] = re.sub(r'^(\?\s*\S+.*?)$', WHITE_B + r'\1' + COLOR_RESET, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\+\s*\S+.*?)$', C.GN + r'\1' + C.DN, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\-\s*\S+.*?)$', C.RN + r'\1' + C.DN, diff_lines[i])
+                    diff_lines[i] = re.sub(r'^(\?\s*\S+.*?)$', C.WB + r'\1' + C.DN, diff_lines[i])
                 print(*diff_lines, sep='\n')
 
                 prompt = (''
                     + "\nReplace "
-                    + COLOR_COMMAND
-                    + front
-                    + COLOR_RESET
+                    + W(C.COMM, front)
                     + " with this definition? [N]/y: "
                 )
                 print(prompt, end='')
@@ -2197,6 +2206,7 @@ if __name__ == "__main__":
         help=
         "(Auto) replace the source of each viewed card with the rendered plain text, if different",
     )
+    global options
     options = parser.parse_args()
 
     # Running within a debugger?

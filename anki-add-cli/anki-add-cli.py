@@ -1817,6 +1817,7 @@ def main(deck):
 
             # TODO factor out the rendering of table with headings and columns
             # (auto-calculate widths)
+            # Consider using markdown ? (with rich?)
             print('  ' + (' ') * 10,
                   C.BN, f'{"N":>4s}',
                   C.GN, f'{"R":>3s}',

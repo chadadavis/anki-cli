@@ -305,12 +305,16 @@ COLOR['DD'] = "\033[0;02m" # default dim
 COLOR['DB'] = "\033[1;02m" # default bold (and dim)
 COLOR['RN'] = "\033[0;31m" # red normal
 COLOR['RB'] = "\033[1;31m" # red bold
+COLOR['RU'] = "\033[4;31m" # red underline
 COLOR['GN'] = "\033[0;32m" # green
 COLOR['GB'] = "\033[1;32m"
+COLOR['GU'] = "\033[4;32m"
 COLOR['YN'] = "\033[0;33m" # yellow
 COLOR['YB'] = "\033[1;33m"
+COLOR['YU'] = "\033[4;33m"
 COLOR['BN'] = "\033[0;34m" # blue
 COLOR['BB'] = "\033[1;34m"
+COLOR['BU'] = "\033[4;34m"
 COLOR['MN'] = "\033[0;35m" # magenta
 COLOR['MB'] = "\033[1;35m"
 COLOR['CN'] = "\033[0;36m" # cyan
@@ -999,6 +1003,24 @@ def is_new(card_id):
     return card_id in card_ids
 
 
+def is_learn(card_id):
+    """Card is in the learning phase still
+
+    """
+    card = get_card(card_id)
+    card_ids = get_learning(card['deckName'], ts=time.time()//3600)
+    return card_id in card_ids
+
+
+def is_review(card_id):
+    """Card has graduated to the reviewing phase
+
+    """
+    card = get_card(card_id)
+    card_ids = get_reviewing(card['deckName'], ts=time.time()//3600)
+    return card_id in card_ids
+
+
 @functools.lru_cache(maxsize=10)
 def get_unreviewed(deck, ts=None):
     """
@@ -1515,7 +1537,7 @@ def main(deck):
     card = None
 
     # Is the current result set a review (else it's a search result)
-    is_reviewing = False
+    reviewing = False
     # Show the content only after user was prompted to review
     do_reveal = False
 
@@ -1585,7 +1607,7 @@ def main(deck):
         # no need to print every definition along the way
         if not options.scroll :
             # Hide content of to-be-reviewed card back until next iteration/keypress
-            if card_id and (not do_reveal) and (is_due(card_id) or (is_reviewing and is_new(card_id))):
+            if card_id and (not do_reveal) and (is_due(card_id) or (reviewing and is_new(card_id))):
                 normalized = renderer('Press [Space] to review ...', term, term=front, deck=deck)
 
                 # Push reviewed term onto readline history,
@@ -1684,14 +1706,31 @@ def main(deck):
             new_n = stats[deck]['new']
             lrn_n = stats[deck]['learn']
             rev_n = stats[deck]['review']
-            if is_reviewing or lrn_n or rev_n :
+            if reviewing or lrn_n or rev_n :
+                logging.debug(f'{new_n=}/{lrn_n=}/{rev_n=}/{card_id=}/{reviewing=}')
+                if card_id:
+                    logging.debug(f'{is_new(card_id)=}/{is_review(card_id)=}/{is_learn(card_id)=}')
+
                 # Match colors used in the Anki GUI
+                # (and underline type of current card, if reviewing)
                 menu += [ ''
-                    + "Re(v)iew: "
-                    + (C.BN if new_n > 0 else C.DD) + f'{new_n:4d}'
-                    + (C.GN if rev_n > 0 else C.DD) + f'{rev_n:3d}'
-                    + (C.RN if lrn_n > 0 else C.DD) + f'{lrn_n:3d}'
-                    +  C.DN
+                    + "Re(v)iew:"
+                    + ' '
+                    # Blue/underline for new cards
+                    + (C.BU if reviewing and card_id and is_new(card_id)
+                        else C.BN if new_n > 0 else C.DD)
+                    + f'{new_n:4d}'
+                    + C.DN + ' '
+                    # Green/underline for reviewing cards
+                    + (C.GU if reviewing and card_id and is_review(card_id)
+                        else C.GN if rev_n > 0 else C.DD)
+                    + f'{rev_n:2d}'
+                    + C.DN + ' '
+                    # Red/underline for learning cards
+                    + (C.RU if reviewing and card_id and is_learn(card_id)
+                        else C.RN if lrn_n > 0 else C.DD)
+                    + f'{lrn_n:2d}'
+                    + C.DN
                 ]
 
         if empty_ids := deck and get_empty(deck):
@@ -1774,7 +1813,7 @@ def main(deck):
         #     case 'p' | 'N' if card_ids_i > 0:
         #         card_ids_i -= 1
 
-        is_reviewing = False
+        # reviewing = False
 
         if key in ('x', 'q', Key.ESC_ESC) :
             clear_line()
@@ -2021,10 +2060,10 @@ def main(deck):
             # Auto-advance
             if card_ids_i < len(card_ids) - 1:
                 card_ids_i += 1
-            is_reviewing = True
+            reviewing = True
             do_reveal = False
         elif key in (' ') and content:
-            is_reviewing = True
+            reviewing = True
             # This allows the content to be revealed on next round
             do_reveal = True
         elif key == 'm' and empty_ids:
@@ -2063,10 +2102,10 @@ def main(deck):
                 or get_new(deck, ts=time.time()//3600)
             )
             card_ids_i = 0
-            is_reviewing = True
+            reviewing = True
             do_reveal = False
         elif key in ('s', Key.CTRL_P, Key.UP):
-            is_reviewing = False
+            reviewing = False
             do_reveal = False
 
             # Exact match search

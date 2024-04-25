@@ -227,6 +227,10 @@ empties, the existing card will be detected.
 # Maybe copy out some things from render() that should be permanent into it's own def
 # And then update the card (like we did before to remove HTML from 'front')
 
+# TODO: store the 2-letter lang-code in the desk description in Anki, eg:
+# lang=nl
+# lang:nl
+
 # See smaller, inline TODOs below ...
 
 # Note, that regex search in Anki is supported from 2.1.24+ onward
@@ -716,32 +720,39 @@ def highlighter(string, query, *, term='', deck=None):
         # Also highlight the canonical form, in case the search query was different
         highlights.add(term)
 
-    term_or_query = unidecode.unidecode(term or query)
+    term_or_query = term or query
+    if term_or_query != unidecode.unidecode(term_or_query):
+        highlights.add(unidecode.unidecode(term_or_query))
+    logging.debug(f'{term_or_query=}')
 
     # TODO also factor out the stemming (separate from highlighting, since lang-specific)
+    # NB, this stemming isn't that reliable, eg
+    # fr/fendre => 'fendr' (but should be 'fend')
     # Map e.g. 'de' to 'german', as required by SnowballStemmer
     if deck and deck in iso639.languages.part1:
         lang = iso639.languages.get(part1=deck).name.lower()
         stemmer = SnowballStemmer(lang)
-        stem = stemmer.stem(query)
-        if stem != query:
+        stem = stemmer.stem(term_or_query)
+        if stem != term_or_query:
             highlights.add(stem)
+            logging.debug(f'{stem=}')
+
 
     # Language/source-specific extraction of inflected forms
     if deck == 'nl':
         # Hack stemming, assuming -en suffix, but not for short words like 'een'
         # For cases: verb infinitives, or plural nouns without singular
         # eg ski-ën, hersen-en
-        highlights.add( re.sub(r'(..)en$', r'\1\\S*', term_or_query) )
+        highlights.add( re.sub(r'\b(.{2,})en\b', r'\1', term_or_query) )
 
         # And adjectives/nouns like vicieus/vicieuze or reus/reuze or keus/keuze
         if term_or_query.endswith('eus') :
             highlights.add( re.sub(r'eus$', r'euz\\S*', term_or_query) )
 
-        # Find given inflections
+        # Find given inflections listed in the definition/entry
 
         matches = []
-        # Theoretically, we could not have a double loop here, but this makes it
+        # Theoretically, we could avoid a double loop here, but this makes it
         # easier to read. There can be multiple inflections in one line (eg
         # prijzen), so it's easier to have two loops.
         inflections = re.findall(
@@ -824,20 +835,19 @@ def highlighter(string, query, *, term='', deck=None):
                 highlights.add(match)
 
     elif deck == 'de':
-        if term_or_query.endswith('en'):
-            highlights.add( re.sub(r'en$', '', term_or_query) )
-
-        # TODO use the debugger to test
+        # TODO irregular forms? where could we get them from?
         # DE: <gehst, ging, ist gegangen> gehen
 
         # Could also get the conjugations via the section (online):
         # Collins German Verb Tables (and for French, English)
         # Or try Verbix? (API? Other APIs online for inflected forms?)
         ...
-    elif deck == 'en':
-        ...
-        # TODO
-        # EN: v. walked, walk·ing, walks
+    elif deck == 'fr':
+        # Test on eg céder (since also the accent changes in conjugation)
+        highlights.add( re.sub(r'\b(.{2,})(er|re|ir)\b', r'\1', term_or_query) )
+
+
+    logging.debug(f'{highlights=}')
 
     # Sort the highlight terms so that the longest are first.
     # Since inflections might be prefixes.
@@ -898,6 +908,9 @@ def get_url(term, *, lang):
 
 
 def search(term, *, lang):
+    """...
+
+    """
     obj = {}
 
     if lang == 'nl':
@@ -1493,7 +1506,7 @@ def scroll_screen():
     print("\n" * os.get_terminal_size().lines)
 
 
-def scroll_screen_to_menu(content="", line_pos=None):
+def scroll_to_menu(content="", line_pos=None):
     """The content is the whatever might have already been printed at the top
 
     Else line_pos is how many lines were already printed since the top
@@ -1639,7 +1652,7 @@ def main(deck):
             print("\n".join(suggestions))
             line_pos += len(suggestions) + 2
 
-        scroll_screen_to_menu(line_pos=line_pos)
+        scroll_to_menu(line_pos=line_pos)
 
         # Print the menu (TODO factor this out)
         # spell-checker:disable
@@ -1676,6 +1689,8 @@ def main(deck):
 
         # Check for incoming changes periodically.
         # But push outgoing changes sooner, since we know if any are pending.
+        # cf. Auto Sync: https://ankiweb.net/shared/info/501542723
+        # TODO make a CLI arg to enable/disable auto-sync
         sync_thresh_edits = 10 if not options.scroll else float('inf')
         sync_thresh_secs = 60 * 60
         if (0
@@ -1882,22 +1897,20 @@ def main(deck):
 
                 # TODO factor out the scaling and tick marks drawing
 
-                # Draw a histogram to emphasize the count of due cards, as a per mille ‰
-                width = 100
-                scale = 1000
+                # Draw a histogram to emphasize the count of due cards
+                width = 100 # chars on the terminal to use
+                scale = 100 # max value expected
+                mod   = 10  # tick marks every N chars
                 due_n = int( (lrn_n+rev_n) * width / scale )
-                # For tick marks on the axis:
-                mod   = int( 100 * width / scale )
-                quot = due_n // mod
-                rem = due_n % mod
+                quot, rem = divmod(due_n, mod)
                 print(
-                    ' |',
-                    ('─' * (mod-1) + '|') * quot,
-                    '─' * rem,
+                    ' |',                          # left border
+                    quot * ('-' * (mod-1) + '|'),  # full blocks
+                    rem  *  '-',                   # partial block
                     sep=''
                 )
 
-            scroll_screen_to_menu(line_pos=len(decks)+1)
+            scroll_to_menu(line_pos=len(decks)+1)
             sync()
 
             deck_prev = options.deck
@@ -2034,6 +2047,8 @@ def main(deck):
                     reply = readchar.readkey()
                 except (KeyboardInterrupt) as e:
                     ...
+                finally:
+                    clear_line()
                 if reply and reply.casefold() == 'y':
                     update_card(card_id, back=normalized)
                     edits_n += 1

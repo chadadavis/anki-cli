@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
-"""Anki add - fetch online definitions and add cards to Anki vocabulary decks
+#!/usr/bin/env /home/chdavis/git/anki-cli/.venv/bin/python
+
+"""Anki CLI - fetch online definitions and add cards to Anki vocabulary decks
 
 Based on this API: https://github.com/FooSoft/anki-connect/
 

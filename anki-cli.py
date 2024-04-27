@@ -2306,7 +2306,7 @@ if __name__ == "__main__":
     os.environ['LESS'] = os.environ['LESS'] + ' --QUIT-AT-EOF'
 
     # Set terminal title, to be able to search through windows
-    title = "anki-cli : card mgr"
+    title = "anki-cli - card mgr"
     if options.debug:
         title = "debug: " + title
     sys.stdout.write('\x1b]2;' + title + '\x07')

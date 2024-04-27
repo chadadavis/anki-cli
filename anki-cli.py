@@ -45,7 +45,7 @@ Note on Duplicate detection:
 Android and Desktop apps: detects dupes across the same note type, not the same
 deck. Desktop will allow you to see what the dupes are, ie if they're in a diff
 deck. Android doesn't, though, so you might create dupes there when adding new
-(empty) cards. That's ok. Once you get back to anki-add-cli, and dequeue the
+(empty) cards. That's ok. Once you get back to the CLIan, and dequeue the
 empties, the existing card will be detected.
 
 """
@@ -2306,7 +2306,7 @@ if __name__ == "__main__":
     os.environ['LESS'] = os.environ['LESS'] + ' --QUIT-AT-EOF'
 
     # Set terminal title, to be able to search through windows
-    title = "anki-add-cli : card mgr"
+    title = "anki-cli : card mgr"
     if options.debug:
         title = "debug: " + title
     sys.stdout.write('\x1b]2;' + title + '\x07')

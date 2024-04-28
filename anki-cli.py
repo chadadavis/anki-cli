@@ -1945,6 +1945,9 @@ def main(deck):
                 for i in range(hist_len_post, hist_len_pre, -1):
                     readline.remove_history_item(i-1) # zero-based indexes
 
+            if match := re.match('\s*([a-z]{2})\s*[/]\s*(.*)', selected):
+                selected, term = match.groups()
+
             if selected not in decks:
                 beep()
                 continue
@@ -1952,6 +1955,10 @@ def main(deck):
             # This is so that `completer()` can know what lang/deck we're using
             # for future word autocompletions
             options.deck = deck
+
+            # TODO do a search if there's a 'term'
+            if term:
+                ...
 
             # scroll_screen()
         elif key in ('y', '*') :
@@ -2151,6 +2158,10 @@ def main(deck):
                     deck = lang
             else:
                 lang = deck
+
+            if not term:
+                card_ids = []
+                continue
 
             card_ids = search_anki(term, deck=deck)
             card_ids_i = 0

@@ -2223,7 +2223,9 @@ def completer(text: str, state: int) -> Optional[str]:
 
     # Autocomplete via prefix search in Anki (via local HTTP server)
     global options
-    if options.deck and not completions:
+    # Only if no other maches already? Or always?
+    # if options.deck and not completions:
+    if options.deck :
         card_ids = search_anki(text + '*', deck=options.deck)
         for card_id in card_ids:
             term = get_card(card_id)['fields']['Front']['value']

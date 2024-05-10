@@ -386,8 +386,8 @@ def assert_anki(retry=True):
     # not understand redirecting stdout/stderr to a log file.
     # Output from Anki/add-ons would interfere with our CLI output on stdout.
     cmd = ['env', 'ANKI_WAYLAND=1', 'anki']
-    logging.info(f'launching ... {cmd}')
-    with open(f'anki.log', 'a') as log_file:
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    with open(os.path.join(dir_path, 'anki.log'), 'a') as log_file:
         subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
     time.sleep(1.0)
     # Try one last time

@@ -256,6 +256,7 @@ import os
 import pprint
 import random
 import readline
+import signal
 import socket
 import subprocess
 import sys
@@ -1805,7 +1806,11 @@ def main(deck):
         while not key:
             clear_line()
             print(menu + '\r', end='', flush=True)
-            key = readchar.readkey()
+            try:
+                key = readchar.readkey()
+            except ResizeException:
+                # Any val that won't match a handler below:
+                key = 'ResizeException'
 
             # Don't accept space(s),
             # It might be the user not realizing the pager has ended.
@@ -2242,6 +2247,18 @@ def completer(text: str, state: int) -> Optional[str]:
     return None
 
 
+def handle_sigwinch(signum, frame):
+    """Handle the window (size) change signal"""
+    # An instance of os.terminal_size
+    size = os.get_terminal_size()
+    logging.debug(size)
+    raise ResizeException()
+
+
+class ResizeException(Exception):
+    pass
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -2301,6 +2318,9 @@ if __name__ == "__main__":
                         format=f'%(asctime)s %(levelname)-8s %(lineno)4d %(funcName)-20s %(message)s'
                         )
     logging.info('__main__')
+
+    # Set the signal handler for window/font size
+    signal.signal(signal.SIGWINCH, handle_sigwinch)
 
     decks = get_deck_names()
     if not options.deck:

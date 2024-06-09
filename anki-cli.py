@@ -450,7 +450,13 @@ def get_deck_names():
     return names
 
 
-def renderer(string, query='', *, term='', deck=None):
+def renderer(
+    string,
+    query='',
+    *,
+    term='',
+    deck=None,
+    ):
     """For displaying (normalized) definition entries on the console/CLI"""
 
     # Prepend term in canonical format, for display only
@@ -466,7 +472,11 @@ def renderer(string, query='', *, term='', deck=None):
     return string
 
 
-def normalizer(string, *, term=None):
+def normalizer(
+    string,
+    *,
+    term=None,
+    ):
     """Converts HTML to text, for saving in Anki DB"""
 
     # Specific to woorden.org
@@ -691,7 +701,13 @@ def normalizer(string, *, term=None):
     return string
 
 
-def highlighter(string, query, *, term='', deck=None):
+def highlighter(
+    string,
+    query,
+    *,
+    term='',
+    deck=None,
+    ):
 
     # Map wildcard search chars to regex syntax
     query = re.sub(r'[.]', r'\.', query)
@@ -923,7 +939,15 @@ def search(term, *, lang):
     return obj
 
 
-def search_anki(query, *, deck, wild=False, field='front', browse=False, term=''):
+def search_anki(
+    query,
+    *,
+    deck,
+    wild=False,
+    field='front',
+    browse=False,
+    term='',
+    ):
     """Local search of Anki"""
 
     # If term contains whitespace, either must quote the whole thing, or replace
